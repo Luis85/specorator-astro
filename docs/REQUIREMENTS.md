@@ -168,9 +168,9 @@
 - **NFR-1 (Platform)** — Desktop only; MUST set `isDesktopOnly: true` and guard
   Node usage with `Platform.isDesktop`. A **system Node.js is a documented
   prerequisite** (detected + guided; no bundled runtime — D10).
-- **NFR-13 (Single site v1)** — v1 supports **one site per vault** (one config
-  note → one Astro project); the design MUST NOT preclude multiple sites later
-  (D5).
+- **NFR-13 (Single site v1)** — v1 supports **one site per vault** (one site
+  config in native settings → one Astro project); the design MUST NOT preclude
+  multiple sites later (D5).
 - **NFR-2 (Isolation)** — A long-running Astro dev server SHOULD run in a child
   process to avoid blocking Obsidian's UI thread; the plugin MUST terminate any
   spawned process in `onunload`.
@@ -318,16 +318,18 @@ Per the official Plugin guidelines:
   (`eslint --fix` + `prettier --write` on staged files); `pre-push` MUST call
   **exactly `npm run verify`** (AGENT-2) so the local gate and CI gate cannot
   diverge.
-- **QA-7 (CI)** — GitHub Actions runs all gates (lint, format:check, typecheck,
-  test:coverage, build) on PRs; all MUST pass to merge.
+- **QA-7 (CI)** — GitHub Actions runs **`npm run verify`** on PRs (the same gate
+  as `pre-push`, QA-6): typecheck, lint, format:check, `depcruise` (boundaries),
+  test:coverage, and build; all MUST pass to merge.
 - **QA-8 (Scripts)** — `package.json` exposes at least: `dev`, `build`, `lint`,
-  `format`, `format:check`, `typecheck`, `test`, `test:coverage`, `docs`.
+  `format`, `format:check`, `typecheck`, `test`, `test:coverage`, `depcruise`,
+  `verify`, `docs`.
 
 ## 8. Documentation requirements
 
 - **DOC-1** — **TypeDoc** generates API docs from `src/` (entry points
-  `src/domain` + `src/application`, or `src/main.ts`), output to `docs/api`,
-  via a standalone `docs` npm script (independent of the esbuild bundle).
+  `src/core` + `src/main.ts`), output to `docs/api`, via a standalone `docs`
+  npm script (independent of the esbuild bundle).
 - **DOC-2** — `README.md` covers install (BRAT + manifest), the native-only
   scope, required core plugins (Bases, Web Viewer), the Node/Astro prerequisite,
   and the NFR-6 disclosures.
