@@ -79,8 +79,12 @@ The three integration points were verified against current (May 2026) sources:
 - **Web Viewer**: a plugin can open any URL in an in-app tab via
   `leaf.setViewState({ type: 'webviewer', state: { url, navigate: true }, active: true })`.
   Web Viewer is a **core plugin that must be enabled**, else links fall back to
-  the system browser. Loading `http://localhost` dev URLs is **(unverified)** —
-  Electron `<webview>` generally loads localhost fine, but confirm by testing.
+  the system browser. Loading `http://localhost` dev URLs is **verified to work**
+  (community plugins serve localhost HTTP and view it in-app via the same
+  webview). What is *blocked* is `file://` (it redirects to the system browser) —
+  which does not affect us since we use `astro dev`. The one untested corner is
+  whether Vite's HMR websocket (`ws://localhost`) is reachable inside the Web
+  Viewer's webview partition — confirm in the Phase-0 spike.
 - **Bases view API**: stable since **Obsidian 1.10.0** (verified in
   `obsidian.d.ts`). A plugin calls `Plugin.registerBasesView(viewId, registration)`
   (returns `false` if Bases is disabled) and extends `BasesView` (a `Component`)
@@ -90,13 +94,23 @@ The three integration points were verified against current (May 2026) sources:
   - `entry.getValue(propertyId): Value | null` — Bases has already applied
     filters and computed formulas; `propertyId` is a prefixed `BasesPropertyId`
     (`note.x`, `formula.y`, `file.z`); errors surface as `ErrorValue`.
-  - `entry.file: TFile`, `this.config.getOrder(): BasesPropertyId[]`.
+  - `entry.file: TFile`, `this.config.getOrder(): BasesPropertyId[]`, and
+    `this.config.getDisplayName(id)` for the column label (use this, **not** a
+    `properties[id].displayName` lookup).
   - `Value` exposes `isEmpty()`, `toString()`, `renderTo()`; `parsePropertyId`
     returns `{ type: file | note | formula, name }`.
+  - **No headless evaluation.** `QueryController` is an empty, non-constructable
+    exported class; there is no `app.bases`/`loadBase` API. The factory fires
+    **only when a `.base` is opened in a leaf with this view type selected** — so
+    harvesting requires a *mounted* view (see §5.1). This is an architectural
+    constraint, not an unknown.
 - **Astro Node API**: `import { dev, build, preview, sync } from 'astro'`.
-  `dev(inlineConfig)` returns a server with `.address` (→ `.port`), `.watcher`,
-  and `.stop()`. `build(inlineConfig)` runs a production build. `AstroInlineConfig`
-  takes `root`, so the plugin can point Astro at the project in its data folder.
+  `dev(inlineConfig)` returns a server whose port is read via
+  `(server.address as AddressInfo).port` (it is a Node `AddressInfo`), with
+  `.watcher` and `.stop()`. `build(inlineConfig)` runs a production build;
+  `AstroInlineConfig` takes `root`. **Caveat:** this programmatic API is still
+  flagged **experimental** (changelog-only stability) — pin Astro and prefer the
+  child-process binary + stdout URL parse as the default runner (§5.3).
 - **Child processes**: Obsidian plugins on desktop can `require('child_process')`
   and spawn long-running processes. **PATH caveat**: macOS GUI apps do not
   inherit the login-shell `PATH`, so `spawn('node'|'npm'|'astro')` commonly
@@ -139,6 +153,17 @@ Dependency rule: `domain` imports nothing external; `application` imports only
 `domain` and its own ports; `infrastructure` and `main.ts` are the only places
 allowed to `import { ... } from 'obsidian'` or touch `child_process`/`fs`.
 
+> **Avoid ceremony.** This plugin's "domain" is mostly data shapes + pure
+> transforms (harvest → transform → render), not a rich business model, so the
+> *load-bearing* boundary is **pure core (`domain`+`application`) vs. impure
+> `adapters`**. Treat `domain`/`application` as organizational subfolders within
+> the pure core, not as two separately-enforced layers, and don't manufacture
+> value objects/aggregates the problem doesn't need. The boundary that matters
+> is mechanically enforced by **`eslint-plugin-boundaries`** (element types +
+> the `boundaries/external` rule that confines `obsidian`/`node:*` imports to
+> adapters), with `dependency-cruiser` in CI for cycles/orphans
+> (`REQUIREMENTS.md §3`).
+
 ### 4.1 Data flow
 
 ```
@@ -157,7 +182,7 @@ allowed to `import { ... } from 'obsidian'` or touch `child_process`/`fs`.
         ▼
  Astro project (.obsidian/plugins/specorator-astro/astro)
    custom Content Layer loader ingests JSON (watcher → live reload)
-   maps snapshot.view.type → Table/Cards/List/Map component
+   maps snapshot.view.type → Table/Cards/List component
         │
         ├─► [AstroProcessAdapter] astro dev → http://localhost:<port>
         │        └─► [WebViewerAdapter] setViewState 'webviewer' → in-app tab
@@ -171,6 +196,15 @@ The same harvest pipeline also ingests other vault inputs: **page notes**
 collections, pages, and navigation together form the `SiteSpec` that Astro
 renders into a full site, using the component library to display it.
 
+**Authoring source vs. build artifacts (the one boundary crossing).** Content
+*authored* by the user lives in the **vault**: notes, `.base` files, page notes,
+and **component-library notes** (§5.6). Everything the build *consumes or
+produces* — JSON snapshots, transpiled `src/generated/` components, the bundled
+template, `node_modules`, `dist/` — lives in the **plugin data folder**, outside
+the indexed vault. The harvest/transpile step is exactly the bridge that reads
+vault sources and writes data-folder artifacts (so NFR-3's "outside the indexed
+vault" applies to *artifacts*, while *sources* are vault-resident by design).
+
 The only Obsidian-dependent step is the harvest. Because the static build reads
 committed JSON snapshots, **publishing does not require Obsidian running at build
 time** once snapshots exist.
@@ -181,18 +215,35 @@ time** once snapshots exist.
 Registers a custom Bases view (`registerBasesView`). In `onDataUpdated()` it
 walks `this.data.groupedData`; for each entry it reads every property id in
 `config.getOrder()` (plus the `groupBy` property) via `entry.getValue(id)`,
-normalizes each `Value` (`toString()` / structured extraction), captures
-`entry.file.path`, and emits a pure `BaseSnapshot`.
+takes the label from `config.getDisplayName(id)`, normalizes each `Value`
+(`toString()` / structured extraction), captures `entry.file.path`, and emits a
+pure `BaseSnapshot`.
 
-**#1 risk — headless harvesting (unverified).** `onDataUpdated()` only fires for
-a view that Obsidian has instantiated with a `QueryController` + `containerEl`,
-i.e. a *mounted* view. There is **no documented API to evaluate a Base to data
-without a leaf**. Candidate strategies, in order of preference, to be settled by
-a Phase-0 spike:
-1. Mount the harvest view in a **detached/hidden leaf**, harvest, then detach.
-2. Harvest **on demand** when the user opens the preview (acceptable UX).
-3. Fallback: parse `.base` YAML ourselves and re-implement filters/formulas —
-   heavy, brittle, explicitly a non-goal; last resort only.
+**Harvest requires a *mounted* view (architectural constraint, not a spike
+unknown).** As established in §3, `onDataUpdated()` fires only for a view
+Obsidian itself instantiated in a leaf; there is no headless/offscreen path and
+no API to evaluate a base to data. Two further consequences shape the design:
+
+1. **A custom view sees only *its own* view's evaluated entries** — not the
+   user's existing table/cards/list views. So to render a base "as the user
+   configured it," the harvester must **read that view's config from the `.base`
+   file** (type, `order`, `groupBy`, view-local `filters`) and apply it to our
+   harvesting view. Bases still performs all filter/formula **evaluation** (we
+   never reimplement the query language) — we only mirror the *view config*.
+2. **Triggering evaluation needs a visible leaf.** Realistic patterns (the
+   Phase-0 gate chooses the least-intrusive that actually works):
+   - **Transient harvest leaf** — programmatically open the base with our view
+     type (`setViewState({ type: 'bases', state: { file, viewType: <ourId> } })`),
+     await `onDataUpdated`, then `leaf.detach()`. Briefly flashes a tab; and it
+     is **unverified that `setViewState` will select a *custom* Bases view type
+     programmatically** — this is the single most important Phase-0 check.
+   - **Pinned harvest leaf** — a dedicated tab the user keeps open.
+   - **User-added view** — the user adds our view to their base once; we harvest
+     whenever it is open. Lowest tech risk, highest user friction.
+
+The clean "silent background harvest" UX is **not** achievable with the current
+public API; Phase-0's first question is *which visible-leaf pattern is least
+intrusive*, not *whether headless works*.
 
 ### 5.2 Snapshot writer (SnapshotWriterPort → FsSnapshotWriter)
 Serializes each `BaseSnapshot` to JSON in the Astro project's data directory.
@@ -207,9 +258,15 @@ dev server is heavy and long-running; isolating it from Obsidian's renderer
 process avoids freezing the UI and contains crashes/leaks. The adapter:
 - resolves the binary path explicitly (with a `bash -lc` fallback and a
   settings override for the Node/binary path to dodge the macOS PATH issue);
-- pins a deterministic `server.port` (or parses the printed URL from stdout);
+  on **Windows** the binary is `astro.cmd`, so use `shell: true` or the explicit
+  `.cmd` path;
+- pins a deterministic `server.port` **and** parses the printed dev URL from
+  stdout (the authoritative source when running the child-process binary);
 - pipes stdout/stderr to a plugin output channel for visible build errors;
-- **must kill the process in `onunload`** (child processes are not auto-managed).
+- **must kill the whole process *tree* in `onunload`.** `child.kill()` only ends
+  the shell, orphaning Vite's `esbuild`/worker descendants. Spawn `detached:true`
+  and kill the group (`process.kill(-child.pid)`) on POSIX; use
+  `taskkill /pid <pid> /T /F` (or `tree-kill`) on Windows.
 
 *Alternative behind the same port*: the in-process Astro Node API
 (`dev()/build()` `require`d from the project's `node_modules`). Easier port/
@@ -218,8 +275,10 @@ adapter, not the default.
 
 ### 5.4 Web Viewer (WebViewerPort → WebViewerAdapter)
 Opens `http://localhost:<port>` in a `webviewer` leaf via `setViewState`.
-Guards: check Web Viewer core plugin is enabled; fall back to the system
-browser otherwise. Localhost loading is **(unverified)** — Phase-0 spike.
+Loading localhost is **verified to work** (§3). Guards: check the Web Viewer
+core plugin is enabled (fall back to the system browser otherwise), and confirm
+Vite's HMR websocket reaches the webview partition — the one remaining Phase-0
+check for this path.
 
 ### 5.5 Astro project (template, lives in plugin data folder)
 A bundled template Astro project, scaffolded into
@@ -297,11 +356,23 @@ const { entry } = Astro.props;
 The note stays valid Obsidian markdown (it renders harmlessly as frontmatter +
 a fenced code block). The harvester reads each component note, **extracts the
 fenced ` ```astro ` block as the template** and the frontmatter as metadata, and
-**transpiles** it into a real `.astro` file under `src/generated/` (minimal
-transpilation: write the block verbatim, prepending a generated props script).
+**transpiles** it into a real `.astro` file under `src/generated/` (write the
+block verbatim, prepending a generated props script).
 Because authoring is plain markdown, components are versioned, synced, searched,
 and linked like any other note. The component-library folder is **excluded from
 page detection** (§5.7) so components never become website pages.
+
+> **This is build-time code execution — no sandbox.** A ` ```astro ` block
+> becomes a real module Vite/Node runs at build time; it can `import`, read
+> files, spawn processes — exactly like source. The trust boundary is the **vault
+> author** (trusted). The real risk is *importing untrusted component notes*
+> (synced/shared/downloaded) — the same class as the next-mdx-remote RCE. There
+> is no honest way to sandbox build-time Node, so the mitigation is **explicit
+> consent + disclosure**, not a fake sandbox (see §5.10). A **safe default
+> exists**: the bundled `theme/` components are fixed, Zod-prop-validated, and
+> need no author code — code-fence components are the **power-user** layer for
+> those who accept the trade-off. Most users get full customization (props,
+> theme CSS, layout assignment) without ever writing executable component code.
 
 > Authoring-format decision **(decided)**: a fenced ` ```astro ` code block is
 > the authoring method. Code fences are the native, correct way to embed
@@ -319,9 +390,15 @@ page detection** (§5.7) so components never become website pages.
 - **Command palette** — a *Create component* command scaffolds a new component
   note (frontmatter + stub fence) in the library folder.
 
-On save, the plugin re-transpiles the note into `src/generated/`, refreshes the
-registry, and — with the dev server running — the component is immediately
-available and live-previewed (HMR).
+On save, the plugin re-transpiles the note into `src/generated/`. **HMR caveat
+(Astro 6):** *editing* an existing generated component hot-reloads, but a
+**newly created** `.astro` file is a known Astro/Vite limitation — new files
+aren't picked up until the dev server restarts. So *Create component* (a new
+file) triggers a programmatic dev-server restart (`stop()` + re-`dev()`); the
+cleaner long-term approach is to expose components through a **stable virtual
+module / registry barrel** so the file set never changes and only contents do.
+Note this is distinct from the Content Layer `watcher` (§5.5), which reloads
+**data** snapshots only — it does **not** recompile `.astro` source.
 
 **Registry + resolution.** A generated `registry.ts` maps a **component name**
 (string) to an imported `.astro` component, scanning `generated/` (from vault
@@ -369,7 +446,11 @@ content types compose the `SiteSpec`:
 
 **Routing / slugs.** Routes derive from a note's `slug`/`permalink` frontmatter,
 falling back to a normalized path/basename (`normalizePath`). The plugin owns a
-route table so wikilinks across pages and collections resolve deterministically.
+route table — the single source of truth for collision detection across the
+shared `[...slug]` namespace. `[[wikilinks]]` are resolved **in the
+harvester/loader against that route table** (Astro has no built-in wikilink
+resolver), not at render time. Newly *designating* a note as a page is fine for
+`astro build` but, like new components, needs a dev-server restart to appear.
 
 **Navigation sources** (resolved in priority order, all native-friendly):
 1. an explicit **navigation config** — a plugin-managed sidecar
@@ -380,16 +461,74 @@ The resolved tree is written to a `navigation` snapshot; Astro layouts render it
 as the site menu (and breadcrumbs), so the same nav appears across all pages.
 
 **Sitemap.** The build emits a standard `sitemap.xml` via the official
-**`@astrojs/sitemap`** Astro integration (configured with the site `site` URL).
-Note: this is an **Astro build integration, not an Obsidian plugin**, so it is
-permitted under the native-only rule (NFR-NATIVE-3). An in-site, human-readable
-"site map" page can also be generated from the route table.
+**`@astrojs/sitemap`** Astro integration (an **Astro build integration, not an
+Obsidian plugin** — permitted under NFR-NATIVE-3). It requires `site` set to an
+`http(s)` URL and **crawls statically-generated routes** (including `[...slug]`
+via `getStaticPaths`), so the project **must stay `output: 'static'`** (it is);
+non-enumerated routes go in `customPages`. Caveat: some `@astrojs/*` integrations
+shipped Astro-6 peer ranges that npm rejects — the bootstrap (§5.9) may need
+`--legacy-peer-deps`; verify the pinned `@astrojs/sitemap` peer range at install.
+An in-site human-readable "site map" page can also be generated from the route
+table.
 
-**Harvest additions.** Beyond `BasesHarvesterAdapter`, the `VaultPort` adapter
-reads designated page notes (frontmatter + body via `Vault.cachedRead`) into
-`PageNode`s and resolves the `NavigationTree`. These join the Bases snapshots in
-the Astro project's data directory; pages render through the same registry-based
-component/layout system (§5.6).
+**Harvest additions & markdown body.** Beyond `BasesHarvesterAdapter`, the
+`VaultPort` adapter reads designated page notes into `PageNode`s and resolves the
+`NavigationTree`. For **page bodies**, prefer pointing a `glob()` loader at the
+`.md` files (native, simplest) over embedding markdown in snapshots; reserve
+snapshot-embedded `body` for where Bases-resolved values are needed. Obsidian-
+flavored markdown is only partially portable: `astro-loader-obsidian` resolves
+`[[wikilinks]]`/`![[embeds]]` but **not** callouts, block refs, transclusions, or
+Dataview — add a remark/rehype plugin for callouts and accept that full Obsidian
+fidelity is out of scope. Pages render through the registry-based component/
+layout system (§5.6).
+
+### 5.8 Asset pipeline
+
+Card covers (`note.cover`), inline images, and `![[embeds]]` point at **vault
+attachments** (vault-relative paths or wiki-embeds). The build must make these
+reachable to Astro. The harvester resolves each referenced attachment via the
+metadata cache, **copies (or hard-links) it into the Astro project's `public/`**
+under a stable path, and **rewrites the `src`/embed reference** in snapshots and
+page bodies to that public URL. Decisions: dedupe by content hash; copy only
+referenced attachments (not the whole vault); leave optimization to Astro's
+`<Image>`/assets where feasible, else serve as-is. Missing attachments degrade
+to a placeholder with a build warning rather than failing the build.
+
+### 5.9 Bootstrap & first run
+
+First run scaffolds the template into the data folder and installs dependencies
+— the make-or-break first experience. Design points:
+- **Toolchain detection first.** Probe for Node/npm (using the NFR-4 resolution);
+  if absent, show actionable guidance and a settings field for the Node path —
+  never fail silently.
+- **Install UX.** Run `npm install` (with `--legacy-peer-deps` if the pinned
+  integrations require it, §5.7) via the process adapter, streaming progress to a
+  visible panel; the install is large and slow, so it is explicit and cancelable.
+- **Offline / partial failure.** Detect no-network and explain; make bootstrap
+  **idempotent and resumable** (re-run safely after a partial failure) rather
+  than leaving a half-installed project.
+- **Bundled vs fetched.** The template source is bundled with the plugin;
+  `node_modules` is fetched on first run (bundling them is impractical). Record
+  this trade-off so the network dependency is expected, not surprising.
+
+### 5.10 Security & trust model
+
+- **Trust boundary.** The **vault author is trusted**; the plugin runs their
+  content. The threats are (a) **component notes authored by someone else**
+  (synced, shared, downloaded) — which become **build-time code execution**
+  (§5.6) — and (b) **supply chain** via `npm install`.
+- **No sandbox claim.** Build-time Node cannot be honestly sandboxed; the plugin
+  must not pretend otherwise.
+- **Mitigations.** Enabling the code-fence component library requires **one-time
+  explicit consent**; the safe `theme/` components (Zod-validated, no author
+  code) are the default. The README **discloses** network use, file access
+  outside the vault, and that component notes execute at build time (NFR-6 /
+  marketplace requirements). `child_process` only ever spawns the project-local
+  toolchain, never content-derived commands.
+- **Data-loss safety.** Regeneration only ever writes `src/generated/`; it
+  **never deletes** vault content or hand-written `user/` files. Uninstall
+  cleanup of the (large) data-folder project is offered, gated behind
+  confirmation.
 
 ## 6. Snapshot data model (proposed)
 
@@ -430,12 +569,12 @@ One snapshot per base/view. Shape (illustrative):
 }
 ```
 
-**Note body**: the Bases entry exposes property values, not the note body.
-Options (Astro side): (a) ship raw markdown in `body` and render via the
-loader's `renderMarkdown` (keeps everything in the data folder, lets us resolve
-Obsidian links in the harvester); or (b) point a `glob()` loader at the `.md`
-files directly (native, simplest, but bypasses the snapshot pipeline). Decision
-deferred to Phase 3.
+**Note body (decision).** The Bases entry exposes property values, not the note
+body. **Page bodies** (§5.7) render via a `glob()` loader over the `.md` files
+(native, simplest). The snapshot-embedded `body` field is used only where a
+**collection entry** needs its body rendered alongside Bases-resolved values;
+when used, the harvester ships markdown and resolves Obsidian links against the
+route table before write.
 
 Alongside per-view base snapshots, the writer emits a **`pages`** snapshot
 (one `PageNode` per designated note: route, title, frontmatter, body) and a
@@ -460,47 +599,65 @@ consumed by the same Astro Content Layer loaders (§5.7).
 
 | # | Risk | Severity | Mitigation |
 |---|------|----------|------------|
-| 1 | Headless Bases harvest may require a mounted view | **High** | Phase-0 spike (hidden leaf / on-demand); isolate behind `BasesPort` |
-| 2 | Web Viewer loading `localhost` unverified | Med | Phase-0 spike; fall back to system browser |
-| 3 | `node`/`npm`/`astro` binary resolution (macOS PATH) | Med | Absolute paths, `bash -lc`, settings override |
-| 4 | Toolchain setup friction (Node + npm install) | Med | Bundled template + bootstrap command + clear error surfacing |
-| 5 | Bases is young; API/syntax churn | Med | Adapter isolation; pin `minAppVersion`; integration tests |
-| 6 | Large-vault build/preview performance | Med | Respect `limit`; incremental snapshot writes |
-| 7 | Marketplace review scrutiny (`child_process`, network) | Low/Med | README disclosures; security-minded code; expect manual review |
-| 8 | Desktop-only (no mobile) | Accepted | `isDesktopOnly: true`; `Platform` guards |
+| 1 | Harvest needs a *mounted* view; no headless API (constraint, not unknown) | **High** | Visible transient/pinned leaf (§5.1); Phase-0 picks least-intrusive; verify programmatic custom-`viewType` selection |
+| 2 | Code-fence component notes = **build-time code execution** (RCE class) | **High** | Safe Zod-validated `theme/` default; arbitrary `.astro` behind one-time consent; README disclosure; no sandbox claim (§5.10) |
+| 3 | Astro HMR doesn't pick up **new** files (new component/page) | Med | Dev-server restart on create; stable virtual-module/registry barrel (§5.6) |
+| 4 | `node`/`npm`/`astro` binary resolution; process-tree kill; Windows `.cmd` | Med | Abs paths, `bash -lc`, settings override; kill process group / `taskkill` (§5.3) |
+| 5 | Toolchain friction (Node + slow/offline `npm install`) | Med | Idempotent, resumable bootstrap; visible progress; toolchain probe (§5.9) |
+| 6 | Bases young; GUI-emitted view keys undocumented | Med | Read defensively; adapter isolation; contract-test fixtures; pin `minAppVersion` |
+| 7 | Large-vault performance; `onDataUpdated` re-fires often | Med | Respect `limit`; **debounce** re-harvest; incremental writes |
+| 8 | Astro programmatic API + `@astrojs/*` peer ranges experimental/strict | Low/Med | Pin Astro; child-process + stdout parse; `--legacy-peer-deps` if needed |
+| 9 | Marketplace review scrutiny (`child_process`, network, exec) | Low/Med | Disclosures; security-minded code; expect manual review |
+| 10 | Strategic: native Bases-in-Publish is on Obsidian's roadmap | Med | Lead on the unoccupied wedge (live in-Obsidian preview + Astro design + self-host) |
+| 11 | Desktop-only (no mobile) | Accepted | `isDesktopOnly: true`; `Platform` guards |
 
 ## 9. Phased roadmap
 
+> **MVP wedge.** The smallest lovable product proves the one thing nobody else
+> does: **a Base, rendered well, live, inside Obsidian, that also builds to a
+> static site.** Everything below the MVP line is real but explicitly *post-
+> validation* — do not build the full website builder before proving the wedge.
+
 - **Phase 0 — Foundation + de-risk:** stand up the **agentic development
-  environment** first (DDD skeleton, the `verify` gate, ESLint/Prettier/Vitest
-  + import-boundary rules, husky hooks, CI, `CLAUDE.md`, SessionStart bootstrap —
-  see `REQUIREMENTS.md §10`). Then run the spikes: (a) harvest one Base to JSON
-  via a registered view, ideally headless; (b) open `localhost` in the Web
-  Viewer; (c) spawn the project-local `astro` binary and capture its URL.
-  Go/no-go gate.
-- **Phase 1 — MVP:** one `.base` file → table view → JSON snapshot → bundled
-  Astro template → `astro dev` → open in Web Viewer, via a manual command.
-- **Phase 2 — Live + build + customization:** auto-sync snapshots on data
-  change (loader watcher → HMR), cards & list views, settings tab, `astro build`
-  command, and the **component/layout system** (§5.6): the **vault-hosted
-  component library** (component notes → transpiled `.astro`), registry
-  resolution, per-base/view assignment via sidecar, and *Create component* /
-  scaffold commands.
-- **Phase 3 — Full website:** standalone **page** notes + home page, the
-  **navigation** model/menu, `sitemap.xml` via `@astrojs/sitemap`, note-body
-  rendering + cross-page wikilink resolution, multiple bases / code-block bases,
-  publish/deploy guidance. (A self-contained Astro map renderer driven only by
-  coordinate frontmatter — no Obsidian plugin dependency — could also be
-  evaluated here without breaking the native-only rule.)
+  environment** first (core/adapters skeleton, the `verify` gate,
+  ESLint/Prettier/Vitest + boundary rules, husky hooks, CI, `AGENTS.md`,
+  SessionStart bootstrap — see `REQUIREMENTS.md §10`). Then run the spikes that
+  gate everything: (a) **least-intrusive harvest** — open a base in a transient
+  leaf with our view type and confirm `setViewState` selects a *custom* Bases
+  `viewType` programmatically and `onDataUpdated` fires; (b) confirm Vite's HMR
+  websocket works inside the Web Viewer; (c) spawn the project-local `astro`
+  binary, parse its URL, and kill the process tree cleanly. Go/no-go gate.
+- **Phase 1 — MVP:** one `.base` → **table + cards** → JSON snapshot → bundled
+  **safe** Astro template (Zod-validated, no author code) → `astro dev` → open in
+  Web Viewer; auto-resync on data change (the "wow"); `astro build` → `dist/`.
+  CSS-variable theming only.
+- **Phase 2 — Customization:** settings tab, list view, per-base/view component
+  & layout **assignment** (sidecar), the **vault-hosted code-fence component
+  library** behind one-time consent (§5.6/§5.10), *Create component* + right-
+  click affordances.
+- **Phase 3 — Full website (post-validation):** standalone **page** notes + home
+  page, **navigation** menu, `sitemap.xml`, asset pipeline (§5.8), cross-page
+  wikilink resolution, multiple / code-block bases. (A self-contained Astro map
+  renderer from coordinate frontmatter — no Obsidian plugin — could be evaluated
+  here without breaking the native-only rule.)
 - **Phase 4 — Release:** docs (TypeDoc), BRAT beta, marketplace submission.
 
 ## 10. Open questions
-- Can a `BasesView` be mounted headless/offscreen to harvest without a visible
-  tab? (Blocks the cleanest UX — Phase-0.)
-- Does Obsidian's Web Viewer load `http://localhost` without CSP friction?
-- In-process Astro Node API vs child process — confirm memory/UX tradeoff on a
-  real vault.
-- Note-body rendering: ship markdown in snapshots vs glob the `.md` files.
+
+Resolved by the deep review: headless harvest is **impossible** (use a mounted
+leaf, §5.1); Web Viewer **loads localhost** (§3); page note-body rendering uses
+**`glob()`** (§6). Still open:
+- Will `setViewState` select a **custom** Bases `viewType` programmatically so a
+  transient harvest leaf works without the user clicking the view? (The single
+  most important Phase-0 check — if not, harvest UX degrades to "user adds/opens
+  the view once".)
+- Is reading a native view's **view-local `filters`/`order`/`groupBy`** from the
+  `.base` enough to reproduce that view exactly via our harvesting view?
+- New-component delivery: programmatic dev-server **restart** vs **virtual
+  module / registry barrel** — which is more robust under Astro 6?
+- In-process Astro Node API vs child process — memory/UX trade-off on a real
+  vault (child process is the default; confirm the in-process adapter is worth
+  keeping).
 
 ## 11. Sources
 
@@ -526,5 +683,15 @@ Astro: [Programmatic API](https://docs.astro.build/en/reference/programmatic-ref
 
 Prior art: [Quartz](https://quartz.jzhao.xyz/) ·
 [obsidian-export](https://github.com/zoni/obsidian-export) ·
-[VaultCMS](https://github.com/davidvkimball/vaultcms) ·
-[Obsidian Publish pricing](https://obsidian.md/pricing)
+[VaultCMS / Astro Suite](https://davidvkimball.com/posts/astro-suite-for-obsidian/) ·
+[Obsidian Publish pricing](https://obsidian.md/pricing) ·
+[Obsidian roadmap](https://obsidian.md/roadmap/)
+
+Review pass (2nd): [Astro programmatic API (experimental)](https://docs.astro.build/en/reference/programmatic-reference/) ·
+[Astro new-file HMR issue #15333](https://github.com/withastro/astro/issues/15333) ·
+[@astrojs/sitemap](https://docs.astro.build/en/guides/integrations-guide/sitemap/) ·
+[Astro v6 upgrade (Node ≥22.12, Zod 4)](https://docs.astro.build/en/guides/upgrade-to/v6/) ·
+[safe-mdx (allowlist pattern)](https://github.com/holocron-hq/safe-mdx) ·
+[next-mdx-remote RCE CVE-2026-0969](https://advisories.gitlab.com/pkg/npm/next-mdx-remote/CVE-2026-0969/) ·
+[eslint-plugin-boundaries](https://www.npmjs.com/package/eslint-plugin-boundaries) ·
+[AGENTS.md standard](https://agents.md)
