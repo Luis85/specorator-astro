@@ -32,7 +32,25 @@ comments, and discussion.
   resulting snapshots as one set (the `SyncSite` use-case); the writer owns the
   clear+write so a partial failure never leaves a half-written site.
 - **Preview** — starting the Astro dev server and opening it in the Web Viewer
-  (the `PreviewSite` use-case).
+  (the `PreviewSite` use-case). The full preview flow it composes is _ensure
+  project → guard core plugins → auto-sync (first preview only) → start dev →
+  open Web Viewer_.
+- **Auto-sync on first preview** — the preview flow harvests once before
+  starting the dev server so the preview reflects current data, latched
+  per-session in `PreviewSite` so subsequent previews don't re-sync (D2; FR-20).
+- **Live re-sync trigger** — the pure debounce/decision state machine
+  (`LiveResyncTrigger`) for re-syncing the actively-previewed base on data
+  changes: given change events + a quiet window + the `sync.liveResync` toggle,
+  it decides _whether/when_ to fire (rapid edits collapse to one fire; only the
+  previewed base counts). The Obsidian event subscription + wall-clock timer are
+  the adapter/`main.ts`'s thin job; the decision is core (D2; FR-20).
+- **Core-plugins guard** — the pure FR-10 decision (`checkCorePlugins`) that,
+  given whether **Bases**/**Web Viewer** are enabled and which an operation
+  requires, returns a clear Notice message; the raw plugin-state read is the
+  thin `CorePluginsPort` → `CorePluginsAdapter` (Obsidian's `internalPlugins`).
+- **User-facing error** — a `UserFacingError` thrown by a use-case when a
+  user-fixable precondition fails (e.g. a disabled core plugin); the composition
+  root shows its message verbatim as a `Notice` instead of "see console."
 - **Publish target** — one `(base, view)` to publish; **resolved target** adds a
   concrete route + component/layout after planning.
 - **Component note** — an Obsidian note authoring an Astro component as an
