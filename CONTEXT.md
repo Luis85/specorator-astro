@@ -71,6 +71,22 @@ comments, and discussion.
   per snapshot via `getStaticPaths()` and renders it with the registry component
   named by `render.component`, defaulting to the view `type` (`table`/`cards`/
   `list`) when the binding is `'auto'`.
+- **Asset pipeline** — resolving referenced vault attachments (card covers /
+  image-typed values, MVP per D7) to stable `public/` URLs and copying them into
+  the build (FR-16). Split: the **pure** half (`asset-resolver.ts` +
+  `resolveSnapshotAssets`) normalizes refs (strips `![[…|alt#sub]]`), assigns a
+  percent-safe `/assets/…` URL, **dedupes** (same source → one URL) and
+  disambiguates basename collisions, rewrites entry values, and emits a copy
+  plan + warnings; the **I/O** half (`AssetSourcePort`/`AssetSourceAdapter`)
+  locates refs via the metadata cache and copies files (content-hash dedupe).
+- **Asset manifest & image properties** — optional snapshot fields the pipeline
+  adds: `ViewSnapshot.assets` (`{ source, url }[]`, the copy list) and
+  `view.imageProperties` (property ids whose values are images). Image-typed
+  values are rewritten to their public URL so views render them as `<img>`.
+- **Graceful degradation (assets)** — a missing or oversized attachment is
+  **never fatal** (FR-16): the pure `decideAssetAvailability`/`missingAsset`
+  decision rewrites the value to a placeholder URL (`/assets/_missing.svg`,
+  shipped in the template) and records a build warning instead of failing.
 - **Theme / token** — the default look, driven by CSS-variable design tokens.
 - **Astro template** — the bundled Astro project under `templates/astro/**`,
   the **editable source of truth**. Gated by `npm run verify:template` (Astro
