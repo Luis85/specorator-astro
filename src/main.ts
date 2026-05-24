@@ -28,7 +28,14 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		const bases = new BasesHarvesterAdapter(this.app, this);
 		const writer = new FsSnapshotWriter(projectDir);
 		const webViewer = new WebViewerAdapter(this.app);
-		const astro = new AstroProcessAdapter(projectDir);
+		// Resolve the toolchain config lazily so port/binary edits in the settings
+		// tab are honored on the next dev/build without re-wiring. stdout/stderr
+		// stream to the console for now (C4 will surface a visible panel).
+		const astro = new AstroProcessAdapter(projectDir, () => settings.readToolchainConfig(), {
+			write: (line) => {
+				console.warn(`[specorator] ${line.replace(/\n$/, '')}`);
+			},
+		});
 		this.astro = astro;
 
 		// Bootstrap: the pure EnsureProject use-case drives the I/O adapter so the
