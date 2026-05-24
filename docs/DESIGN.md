@@ -360,9 +360,13 @@ deferred to Phase 3.
 
 ## 9. Phased roadmap
 
-- **Phase 0 — De-risk (spikes):** (a) harvest one Base to JSON via a registered
-  view, ideally headless; (b) open `localhost` in the Web Viewer; (c) spawn the
-  project-local `astro` binary and capture its URL. Go/no-go gate.
+- **Phase 0 — Foundation + de-risk:** stand up the **agentic development
+  environment** first (DDD skeleton, the `verify` gate, ESLint/Prettier/Vitest
+  + import-boundary rules, husky hooks, CI, `CLAUDE.md`, SessionStart bootstrap —
+  see `REQUIREMENTS.md §10`). Then run the spikes: (a) harvest one Base to JSON
+  via a registered view, ideally headless; (b) open `localhost` in the Web
+  Viewer; (c) spawn the project-local `astro` binary and capture its URL.
+  Go/no-go gate.
 - **Phase 1 — MVP:** one `.base` file → table view → JSON snapshot → bundled
   Astro template → `astro dev` → open in Web Viewer, via a manual command.
 - **Phase 2 — Live + build + customization:** auto-sync snapshots on data

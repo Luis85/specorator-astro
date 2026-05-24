@@ -225,7 +225,46 @@ Per the official Plugin guidelines:
 All version numbers above were confirmed via the npm registry `latest` dist-tag;
 the Node LTS line via nodejs.org. Re-verify before pinning, as registries move.
 
-## 10. Traceability note
+## 10. Agentic development environment
+
+The repository MUST provide a development environment designed for **agentic
+development** — i.e. one that gives AI coding agents the context and the
+guardrails to produce high-quality software, with rules enforced by tooling
+rather than trusted to reviewers.
+
+- **AGENT-1 (Agent guidance docs)** — A root `CLAUDE.md` (and/or `AGENTS.md`)
+  MUST document: the architecture and DDD import boundaries (ARCH-1/ARCH-2),
+  where code / tests / components live, the canonical commands, the native-only
+  scope (NFR-NATIVE-*), and commit/PR conventions — so an agent has enough
+  context to make correct changes without rediscovery.
+- **AGENT-2 (One-command verify loop)** — A single aggregate script
+  (e.g. `npm run verify`) MUST run the full gate set deterministically
+  (typecheck → lint → format:check → test:coverage → build), giving agents one
+  fast, unambiguous feedback signal.
+- **AGENT-3 (Non-bypassable guardrails)** — The quality gates (QA-1..QA-7) MUST
+  run in pre-commit/pre-push hooks **and** CI, so no change — human or agent —
+  can merge below the bar. CI MUST NOT allow hooks to be skipped.
+- **AGENT-4 (Machine-checkable rules)** — Architectural and style rules MUST be
+  machine-enforced (ESLint import-boundary rules for ARCH-2,
+  `eslint-plugin-obsidianmd`, strict `tsconfig`), not merely documented, so
+  violations fail fast instead of relying on reviewer vigilance.
+- **AGENT-5 (Ready-to-run sessions)** — A Claude Code on the web **SessionStart
+  hook** MUST bootstrap the environment (install deps, prepare the Astro
+  project) and verify the toolchain so agent sessions begin from a green,
+  runnable state. (See the `session-start-hook` capability.)
+- **AGENT-6 (Fast inner loop)** — Pure domain/application tests (TEST-2) MUST
+  run with no Obsidian/Node I/O for sub-second unit feedback; slower
+  integration spikes are kept separate so the agent loop stays fast.
+- **AGENT-7 (Reproducible)** — Pinned dependency versions (DEP-1) plus a
+  committed lockfile MUST make installs reproducible across agent and CI runs.
+- **AGENT-8 (Parseable history)** — A documented commit/PR convention
+  (e.g. Conventional Commits) SHOULD be enforced where practical, keeping
+  history machine-parseable for automated changelogs/releases.
+- **AGENT-9 (Actionable failures)** — Gate failures, and Astro build/dev errors
+  (FR-9), MUST be surfaced with actionable messages so an agent can self-correct
+  within the loop.
+
+## 11. Traceability note
 
 Each requirement here maps to a component or decision in `DESIGN.md`
 (harvester ↔ FR-2, snapshot writer ↔ FR-3, Astro process manager ↔ FR-5/FR-6,
