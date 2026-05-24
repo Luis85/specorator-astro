@@ -659,7 +659,46 @@ leaf, §5.1); Web Viewer **loads localhost** (§3); page note-body rendering use
   vault (child process is the default; confirm the in-process adapter is worth
   keeping).
 
-## 11. Sources
+## 11. Decisions log (interview)
+
+Decisions resolved interactively (supersede earlier open questions where they
+conflict; full integration into the sections above is pending):
+
+- **D1 — Curated inclusion list.** Harvest is driven by a **user-curated list of
+  base files** the user adds to the site; the transient harvester iterates that
+  list (not whole-vault auto-discovery). Refines §5.1.
+- **D2 — Trigger = hybrid.** Manual "Sync site" baseline + auto-sync on first
+  preview + optional **debounced live-resync of only the actively-previewed
+  base** (kept briefly mounted to smooth updates); toggle to disable.
+- **D3 — View granularity.** List is base **files**; per base the user picks
+  which view(s) to publish (default = the base's default view); each selected
+  `(base, view)` → its own route.
+- **D4 — Vault config note.** Site configuration (inclusion list, per-view
+  selection, routes, component/layout bindings) lives in a **vault-resident,
+  plugin-managed, hand-editable config note** (absorbs the earlier
+  `view-bindings.json`/`navigation.json` sidecars); plugin re-reads on change.
+- **D5 — Single site (v1).** One config note → one Astro project → one
+  preview/build; architecture leaves room for multiple sites later.
+- **D6 — Build output.** `astro build` → `dist/` in the plugin data folder +
+  an **"Export/Reveal build"** action; manual deploy to any host; deploy
+  *guidance* stays Phase 3.
+- **D7 — Detail pages from the start.** Each base entry gets its own generated
+  detail page. **Consequence: note-body rendering + the asset pipeline (FR-16)
+  move into the MVP** (no longer Phase 3).
+- **D8 — Core markdown fidelity.** Bodies render markdown + frontmatter,
+  `[[wikilinks]]`/`![[image embeds]]` resolved to routes/assets, callouts via a
+  remark/rehype plugin; block refs, transclusions, Dataview **out of scope v1**.
+- **D9 — One theme + CSS tokens.** A single polished default theme driven by
+  CSS-variable tokens (light/dark, responsive), overridable via one user
+  `theme.css`; deeper changes via the component system. Component delivery uses a
+  **stable virtual-module/registry barrel** (sidesteps Astro's new-file HMR gap).
+
+**Revised MVP (per D7):** one base → **table + cards** collection **plus
+per-entry detail pages** (core-fidelity bodies + assets) → curated list + vault
+config note → transient harvest (hybrid trigger) → safe default theme → live
+preview in Web Viewer → `astro build` to `dist/` + export.
+
+## 12. Sources
 
 Obsidian: [Bases](https://help.obsidian.md/bases) ·
 [Bases syntax](https://help.obsidian.md/bases/syntax) ·
