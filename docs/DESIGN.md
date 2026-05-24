@@ -303,16 +303,25 @@ Because authoring is plain markdown, components are versioned, synced, searched,
 and linked like any other note. The component-library folder is **excluded from
 page detection** (§5.7) so components never become website pages.
 
-> Authoring-format decision **(to finalize)**: a fenced ` ```astro ` block keeps
-> the note Obsidian-valid while giving full Astro power, and needs only trivial
-> transpilation. The alternative (a templated markdown body with mustache-style
-> bindings) is simpler for non-coders but far less expressive. Recommended:
-> fenced block, with a future simple-mode on top.
+> Authoring-format decision **(decided)**: a fenced ` ```astro ` code block is
+> the authoring method. Code fences are the native, correct way to embed
+> non-markdown content in a vault note — they keep the note fully Obsidian-valid,
+> give full Astro power, and need only trivial transpilation. (A future
+> "simple mode" with templated-markdown bindings may be layered on top, but the
+> fence is the canonical surface.)
 
-**Adding a component.** A *Create component* command scaffolds a new component
-note (frontmatter + stub block) in the library folder. On save, the plugin
-re-transpiles it into `src/generated/`, refreshes the registry, and — with the
-dev server running — it is immediately available and live-previewed (HMR).
+**Adding a component.** Two affordances, so the fence is effortless to reach:
+- **Right-click / context menu** — via the `editor-menu` workspace event the
+  plugin adds *Insert Astro component block* (drops a ready-to-edit ` ```astro `
+  fence at the cursor) and, when the cursor is in a component note,
+  *Register as component / Create component here*. A `file-menu` entry on the
+  library folder offers *New component note*.
+- **Command palette** — a *Create component* command scaffolds a new component
+  note (frontmatter + stub fence) in the library folder.
+
+On save, the plugin re-transpiles the note into `src/generated/`, refreshes the
+registry, and — with the dev server running — the component is immediately
+available and live-previewed (HMR).
 
 **Registry + resolution.** A generated `registry.ts` maps a **component name**
 (string) to an imported `.astro` component, scanning `generated/` (from vault

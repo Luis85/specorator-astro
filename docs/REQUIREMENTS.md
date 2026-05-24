@@ -73,6 +73,14 @@
     command that scaffolds a new component note in the library folder; on save
     the component MUST become available (re-transpile → registry refresh → HMR)
     without manual steps.
+  - **FR-11k (Right-click insertion)** — The plugin MUST add **editor
+    context-menu** (right-click) actions, via the `editor-menu` workspace event,
+    to *Insert Astro component block* (a ` ```astro ` code fence at the cursor)
+    and to register/create a component from the current note, plus a `file-menu`
+    *New component note* action on the library folder. Code fences are the
+    canonical authoring surface (decided — see `DESIGN.md §5.6`); the right-click
+    actions exist so users never hand-type the fence. Events MUST be registered
+    via `registerEvent` for auto-cleanup (OBS-4).
   - **FR-11i (No page leakage)** — The component-library folder MUST be excluded
     from website page detection (FR-12) so component notes never become pages.
   - **FR-11j (Precedence)** — On name collision, resolution precedence MUST be:
