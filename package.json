@@ -1,0 +1,55 @@
+{
+	"name": "specorator-astro-viewer",
+	"version": "0.0.1",
+	"description": "Render your Obsidian Bases collections as a live, publishable Astro website, previewed right inside Obsidian.",
+	"author": "Luis85",
+	"license": "MIT",
+	"type": "module",
+	"engines": {
+		"node": ">=22.12"
+	},
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "node esbuild.config.mjs production",
+		"typecheck": "tsc --noEmit",
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"depcruise": "depcruise src --config .dependency-cruiser.cjs",
+		"docs": "typedoc",
+		"verify": "npm run typecheck && npm run lint && npm run format:check && npm run test:coverage && npm run build",
+		"prepare": "husky"
+	},
+	"lint-staged": {
+		"*.{ts,mts,cts}": [
+			"eslint --fix",
+			"prettier --write"
+		],
+		"*.{js,mjs,cjs,json,md,css,yml,yaml}": [
+			"prettier --write"
+		]
+	},
+	"devDependencies": {
+		"@commitlint/cli": "^20.0.0",
+		"@commitlint/config-conventional": "^20.0.0",
+		"@types/node": "25.9.1",
+		"@vitest/coverage-v8": "4.1.7",
+		"dependency-cruiser": "^17.4.0",
+		"esbuild": "0.28.0",
+		"eslint": "10.4.0",
+		"eslint-config-prettier": "10.1.8",
+		"eslint-plugin-boundaries": "^6.0.2",
+		"eslint-plugin-obsidianmd": "0.3.0",
+		"husky": "9.1.7",
+		"lint-staged": "17.0.5",
+		"obsidian": "1.12.3",
+		"prettier": "3.8.3",
+		"typedoc": "0.28.19",
+		"typescript": "6.0.3",
+		"typescript-eslint": "8.59.4",
+		"vitest": "4.1.7"
+	}
+}

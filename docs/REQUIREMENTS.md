@@ -15,7 +15,7 @@
   now (its native rendering depends on the external Maps community plugin). The
   supported view types are **table, cards, and list**.
 - **NFR-NATIVE-3** — The Node/Astro toolchain (Node.js, npm, Astro) is an
-  external *build* dependency, not an Obsidian plugin; it is permitted and
+  external _build_ dependency, not an Obsidian plugin; it is permitted and
   inherent to the concept. This constraint concerns Obsidian plugins only.
 
 ## 1. Functional requirements
@@ -55,51 +55,51 @@
   plugins are disabled, rather than failing silently.
 - **FR-11 (Component/layout management)** — Users MUST be able to manage Astro
   components and layouts easily:
-  - **FR-11a** — The scaffolded project MUST separate **template-owned** files
-    (upgradable) from **user-owned** components/layouts/theme (never overwritten
-    on upgrade). See `DESIGN.md §5.6`.
-  - **FR-11b** — A **registry** MUST discover available view components and
-    layouts by name, with user definitions shadowing template defaults of the
-    same name.
-  - **FR-11c** — Users MUST be able to **assign** a component and layout to a
-    specific base/view; the assignment is stored in a plugin-managed **sidecar
-    config** (not by mutating `.base` files), and resolved into each snapshot.
-  - **FR-11d** — The plugin MUST provide affordances to **scaffold** a new
-    component/layout from a stub and to **assign** layouts/components via the
-    settings UI (dropdowns populated from the registry).
-  - **FR-11e** — Editing a component/layout/theme file while the dev server runs
-    MUST be reflected live in the Web Viewer preview (HMR).
-  - **FR-11f (Vault component library)** — The component library MUST be
-    authorable **inside the vault** in a **configurable folder** set via plugin
-    settings (on install). Each component is a **fully Obsidian-compatible
-    frontmatter markdown note** (renders harmlessly in Obsidian).
-  - **FR-11g (Transpilation)** — The plugin MUST read each component note,
-    extract its metadata (frontmatter) and template (a fenced ` ```astro `
-    block), and transpile it into a real Astro component available to the site
-    and registry (see `DESIGN.md §5.6`). Because transpiled components are
-    **executed at build time** (no sandbox), enabling the code-fence library MUST
-    require **one-time explicit consent** (FR-18), and the **default** path MUST
-    be the safe, Zod-prop-validated bundled `theme/` components that need no
-    author code.
-  - **FR-11h (Add component)** — The plugin MUST provide a *Create component*
-    command that scaffolds a new component note in the library folder. *Editing*
-    an existing component MUST hot-reload; for a **newly created** component the
-    plugin MUST make it available without manual steps by restarting the dev
-    server or using a stable virtual-module/registry barrel (Astro does not HMR
-    new files — `DESIGN.md §5.6`).
-  - **FR-11k (Right-click insertion)** — The plugin MUST add **editor
-    context-menu** (right-click) actions, via the `editor-menu` workspace event,
-    to *Insert Astro component block* (a ` ```astro ` code fence at the cursor)
-    and to register/create a component from the current note, plus a `file-menu`
-    *New component note* action on the library folder. Code fences are the
-    canonical authoring surface (decided — see `DESIGN.md §5.6`); the right-click
-    actions exist so users never hand-type the fence. Events MUST be registered
-    via `registerEvent` for auto-cleanup (OBS-4).
-  - **FR-11i (No page leakage)** — The component-library folder MUST be excluded
-    from website page detection (FR-12) so component notes never become pages.
-  - **FR-11j (Precedence)** — On name collision, resolution precedence MUST be:
-    vault component note → hand-written `user/` `.astro` → bundled `theme/`
-    default.
+    - **FR-11a** — The scaffolded project MUST separate **template-owned** files
+      (upgradable) from **user-owned** components/layouts/theme (never overwritten
+      on upgrade). See `DESIGN.md §5.6`.
+    - **FR-11b** — A **registry** MUST discover available view components and
+      layouts by name, with user definitions shadowing template defaults of the
+      same name.
+    - **FR-11c** — Users MUST be able to **assign** a component and layout to a
+      specific base/view; the assignment is stored in a plugin-managed **sidecar
+      config** (not by mutating `.base` files), and resolved into each snapshot.
+    - **FR-11d** — The plugin MUST provide affordances to **scaffold** a new
+      component/layout from a stub and to **assign** layouts/components via the
+      settings UI (dropdowns populated from the registry).
+    - **FR-11e** — Editing a component/layout/theme file while the dev server runs
+      MUST be reflected live in the Web Viewer preview (HMR).
+    - **FR-11f (Vault component library)** — The component library MUST be
+      authorable **inside the vault** in a **configurable folder** set via plugin
+      settings (on install). Each component is a **fully Obsidian-compatible
+      frontmatter markdown note** (renders harmlessly in Obsidian).
+    - **FR-11g (Transpilation)** — The plugin MUST read each component note,
+      extract its metadata (frontmatter) and template (a fenced ` ```astro `
+      block), and transpile it into a real Astro component available to the site
+      and registry (see `DESIGN.md §5.6`). Because transpiled components are
+      **executed at build time** (no sandbox), enabling the code-fence library MUST
+      require **one-time explicit consent** (FR-18), and the **default** path MUST
+      be the safe, Zod-prop-validated bundled `theme/` components that need no
+      author code.
+    - **FR-11h (Add component)** — The plugin MUST provide a _Create component_
+      command that scaffolds a new component note in the library folder. _Editing_
+      an existing component MUST hot-reload; for a **newly created** component the
+      plugin MUST make it available without manual steps by restarting the dev
+      server or using a stable virtual-module/registry barrel (Astro does not HMR
+      new files — `DESIGN.md §5.6`).
+    - **FR-11k (Right-click insertion)** — The plugin MUST add **editor
+      context-menu** (right-click) actions, via the `editor-menu` workspace event,
+      to _Insert Astro component block_ (a ` ```astro ` code fence at the cursor)
+      and to register/create a component from the current note, plus a `file-menu`
+      _New component note_ action on the library folder. Code fences are the
+      canonical authoring surface (decided — see `DESIGN.md §5.6`); the right-click
+      actions exist so users never hand-type the fence. Events MUST be registered
+      via `registerEvent` for auto-cleanup (OBS-4).
+    - **FR-11i (No page leakage)** — The component-library folder MUST be excluded
+      from website page detection (FR-12) so component notes never become pages.
+    - **FR-11j (Precedence)** — On name collision, resolution precedence MUST be:
+      vault component note → hand-written `user/` `.astro` → bundled `theme/`
+      default.
 - **FR-12 (Standalone pages)** — Beyond Bases collections, the plugin MUST turn
   **individual vault notes** into website pages. A note opts in via frontmatter
   (e.g. `site: true` / a `page` type) or a configured "pages" folder; one note
@@ -140,7 +140,7 @@
   **routes**, component/layout **bindings**, **navigation**, and the **site URL**.
   The plugin re-reads it on change (no fighting manual edits) and it is
   schema-versioned (NFR-8). (D1/D3/D4/D14/D16)
-- **FR-20 (Sync trigger)** — Provide a manual *Sync site* command; auto-sync on
+- **FR-20 (Sync trigger)** — Provide a manual _Sync site_ command; auto-sync on
   first preview; and an optional, **debounced live-resync of only the
   actively-previewed base** (toggle to disable). (D2)
 - **FR-21 (Detail pages — MVP)** — Each published base entry MUST render its own
@@ -209,18 +209,18 @@
 ## 3. Architecture requirements (DDD / ports & adapters, pragmatic)
 
 - **ARCH-1** — Two **enforced** zones under `src/`, plus the composition root:
-  - `core/` — **pure**, no I/O, never imports `obsidian`/`node:*`. Holds the data
-    model (`BaseSnapshot`, `ViewSpec`, `SiteSpec`, route/nav resolution), the
-    transforms (markdown→`.astro` transpiler, mapping), the use-cases
-    (`HarvestBases`, `SyncSnapshots`, `BuildSite`, …), and the **ports**
-    (interfaces): `BasesPort`, `VaultPort`, `SnapshotWriterPort`,
-    `AstroProcessPort`, `WebViewerPort`, `SettingsPort`. (Organize domain vs
-    use-cases as subfolders if helpful — but do **not** over-abstract; this
-    plugin has almost no business-rule domain.)
-  - `adapters/` — implement the ports; the **only** place (besides `main.ts`)
-    allowed to import `obsidian` / Node modules.
-  - `main.ts` — the `Plugin` subclass = composition root, wiring adapters into
-    use-cases in `onload`.
+    - `core/` — **pure**, no I/O, never imports `obsidian`/`node:*`. Holds the data
+      model (`BaseSnapshot`, `ViewSpec`, `SiteSpec`, route/nav resolution), the
+      transforms (markdown→`.astro` transpiler, mapping), the use-cases
+      (`HarvestBases`, `SyncSnapshots`, `BuildSite`, …), and the **ports**
+      (interfaces): `BasesPort`, `VaultPort`, `SnapshotWriterPort`,
+      `AstroProcessPort`, `WebViewerPort`, `SettingsPort`. (Organize domain vs
+      use-cases as subfolders if helpful — but do **not** over-abstract; this
+      plugin has almost no business-rule domain.)
+    - `adapters/` — implement the ports; the **only** place (besides `main.ts`)
+      allowed to import `obsidian` / Node modules.
+    - `main.ts` — the `Plugin` subclass = composition root, wiring adapters into
+      use-cases in `onload`.
 - **ARCH-2** — Boundaries MUST be **machine-enforced** by
   **`eslint-plugin-boundaries`**: `core` may import only `core`; `adapters`/root
   may import `core`+`adapters`; the `boundaries/external` rule confines
@@ -244,8 +244,8 @@
 - **TEST-4** — Use the `node` environment for core/process logic; use `jsdom`
   only for DOM/`createEl` rendering tests.
 - **TEST-5** — Coverage via `@vitest/coverage-v8`; enforce per-glob thresholds in
-  `test.coverage.thresholds`. **`core/**` ≥ 90%**; `adapters/**` a lower bar (do
-  **not** impose a global 90% — thin I/O adapters invite test-theater).
+  `test.coverage.thresholds`. **`core/**`≥ 90%**;`adapters/**` a lower bar (do
+  **not\*\* impose a global 90% — thin I/O adapters invite test-theater).
 - **TEST-6** — Add (a) **contract-test fixtures** capturing real
   `BasesEntry`/`groupedData` shapes from a live vault, to test the harvester
   adapter's normalization and catch Bases API churn; and (b) **Astro Container
@@ -255,6 +255,7 @@
 ## 5. Distribution requirements
 
 ### 5.1 BRAT (beta)
+
 - **DIST-BRAT-1** — GitHub **release assets** MUST include `manifest.json` and
   `main.js` (and `styles.css` only if one exists). `versions.json` is not
   required by BRAT.
@@ -265,6 +266,7 @@
   reads the manifest from release assets.
 
 ### 5.2 Community marketplace
+
 - **DIST-MP-1** — Repo MUST contain `README.md`, `LICENSE`, and `manifest.json`.
 - **DIST-MP-2** — Each GitHub release MUST attach `main.js`, `manifest.json`
   (and optional `styles.css`); the tag MUST equal the manifest `version`
@@ -286,6 +288,7 @@
 ## 6. Obsidian best-practices (must comply)
 
 Per the official Plugin guidelines:
+
 - **OBS-1** — No `innerHTML` / `outerHTML` / `insertAdjacentHTML`; build DOM via
   `createEl()` / DOM API.
 - **OBS-2** — Prefer the **Vault API** over the Adapter API; use
@@ -345,29 +348,29 @@ Per the official Plugin guidelines:
   `@astrojs/*` integrations shipped strict Astro-6 peer ranges — be ready to
   install with `--legacy-peer-deps` (FR-17) and verify peer ranges at pin time.
 
-| Package | Version (2026-05-24) | Role |
-|---|---|---|
-| `typescript` | 6.0.3 | language / typecheck |
-| `esbuild` | 0.28.0 | plugin bundler (`main.js`) |
-| `builtin-modules` | 5.2.0 | esbuild externals |
-| `obsidian` | 1.12.3 | Obsidian API types |
-| `@types/node` | 25.9.1 | Node types |
-| `astro` | 6.3.7 | site generator (in project) |
-| `@astrojs/sitemap` | 3.7.2 | `sitemap.xml` generation (FR-14) |
-| `vitest` | 4.1.7 | test runner |
-| `@vitest/coverage-v8` | 4.1.7 | coverage |
-| `eslint` | 10.4.0 | linter |
-| `typescript-eslint` | 8.59.4 | TS ESLint (meta-package) |
-| `eslint-plugin-obsidianmd` | 0.3.0 | official Obsidian lint rules |
-| `eslint-config-prettier` | 10.1.8 | disable format-conflicting rules |
-| `prettier` | 3.8.3 | formatter |
-| `typedoc` | 0.28.19 | API docs |
-| `husky` | 9.1.7 | git hooks |
-| `lint-staged` | 17.0.5 | staged-file gate |
-| `eslint-plugin-boundaries` | 6.0.2† | import-boundary enforcement (ARCH-2) |
-| `dependency-cruiser` | 17.4.0† | CI cycle/orphan checks (ARCH-2) |
-| `@commitlint/cli` + `config-conventional` | latest† | Conventional Commits (AGENT-8) |
-| `release-please` | latest† | release automation (AGENT-8) |
+| Package                                   | Version (2026-05-24) | Role                                 |
+| ----------------------------------------- | -------------------- | ------------------------------------ |
+| `typescript`                              | 6.0.3                | language / typecheck                 |
+| `esbuild`                                 | 0.28.0               | plugin bundler (`main.js`)           |
+| `builtin-modules`                         | 5.2.0                | esbuild externals                    |
+| `obsidian`                                | 1.12.3               | Obsidian API types                   |
+| `@types/node`                             | 25.9.1               | Node types                           |
+| `astro`                                   | 6.3.7                | site generator (in project)          |
+| `@astrojs/sitemap`                        | 3.7.2                | `sitemap.xml` generation (FR-14)     |
+| `vitest`                                  | 4.1.7                | test runner                          |
+| `@vitest/coverage-v8`                     | 4.1.7                | coverage                             |
+| `eslint`                                  | 10.4.0               | linter                               |
+| `typescript-eslint`                       | 8.59.4               | TS ESLint (meta-package)             |
+| `eslint-plugin-obsidianmd`                | 0.3.0                | official Obsidian lint rules         |
+| `eslint-config-prettier`                  | 10.1.8               | disable format-conflicting rules     |
+| `prettier`                                | 3.8.3                | formatter                            |
+| `typedoc`                                 | 0.28.19              | API docs                             |
+| `husky`                                   | 9.1.7                | git hooks                            |
+| `lint-staged`                             | 17.0.5               | staged-file gate                     |
+| `eslint-plugin-boundaries`                | 6.0.2†               | import-boundary enforcement (ARCH-2) |
+| `dependency-cruiser`                      | 17.4.0†              | CI cycle/orphan checks (ARCH-2)      |
+| `@commitlint/cli` + `config-conventional` | latest†              | Conventional Commits (AGENT-8)       |
+| `release-please`                          | latest†              | release automation (AGENT-8)         |
 
 Versions without † were confirmed via the npm registry `latest` dist-tag (Node
 LTS via nodejs.org). †-marked versions are review-agent-reported — confirm via
@@ -384,7 +387,7 @@ rather than trusted to reviewers.
   (the 2026 cross-tool standard); `CLAUDE.md` is a symlink/import of it to avoid
   drift. It MUST document: the architecture and import boundaries (ARCH-1/ARCH-2),
   where code / tests / components live, the canonical commands, the native-only
-  scope (NFR-NATIVE-*), and commit/PR conventions — so an agent has enough
+  scope (NFR-NATIVE-\*), and commit/PR conventions — so an agent has enough
   context to make correct changes without rediscovery.
 - **AGENT-2 (One-command verify loop)** — A single aggregate script
   (e.g. `npm run verify`) MUST run the full gate set deterministically
@@ -429,7 +432,7 @@ rather than trusted to reviewers.
 Each requirement here maps to a component or decision in `DESIGN.md`
 (harvester ↔ FR-2, snapshot writer ↔ FR-3, Astro process manager ↔ FR-5/FR-6,
 Web Viewer adapter ↔ FR-5, asset pipeline ↔ FR-16, bootstrap ↔ FR-17, security
-↔ FR-18, architecture ↔ ARCH-*). The deep review **resolved** the prior unknowns:
+↔ FR-18, architecture ↔ ARCH-\*). The deep review **resolved** the prior unknowns:
 headless harvest is impossible (FR-2 now mandates a mounted view) and Web Viewer
 loads localhost (FR-5 verified). The remaining Phase-0 gate is whether
 `setViewState` selects a **custom** Bases `viewType` programmatically

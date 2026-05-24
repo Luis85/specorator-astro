@@ -1,0 +1,36 @@
+import type { ResolvedTarget, SiteConfig, ViewSnapshot } from './domain/types';
+
+/** Reads the user's site configuration (the vault config note). */
+export interface VaultPort {
+	readSiteConfig(): Promise<SiteConfig>;
+}
+
+/** Harvests one `(base, view)` target into a serializable snapshot. */
+export interface BasesPort {
+	harvest(target: ResolvedTarget): Promise<ViewSnapshot>;
+}
+
+/** Persists snapshots into the Astro project's data directory. */
+export interface SnapshotWriterPort {
+	write(snapshot: ViewSnapshot): Promise<void>;
+	clear(): Promise<void>;
+}
+
+/** Runs the Astro toolchain (dev server / build) out-of-process. */
+export interface AstroProcessPort {
+	startDev(): Promise<{ url: string }>;
+	build(): Promise<void>;
+	stop(): Promise<void>;
+}
+
+/** Opens a URL in Obsidian's Web Viewer. */
+export interface WebViewerPort {
+	open(url: string): Promise<void>;
+}
+
+/** Minimal logging seam so the core never reaches for `console` directly. */
+export interface Logger {
+	info(message: string): void;
+	warn(message: string): void;
+	error(message: string, error?: unknown): void;
+}

@@ -1,0 +1,12 @@
+node_modules/
+main.js
+main.js.map
+dist/
+coverage/
+docs/api/
+.astro/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

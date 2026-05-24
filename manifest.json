@@ -1,0 +1,10 @@
+{
+	"id": "specorator-astro-viewer",
+	"name": "Specorator Astro Viewer",
+	"version": "0.0.1",
+	"minAppVersion": "1.10.0",
+	"description": "Render your Bases collections as a live, publishable Astro website, previewed right in the app.",
+	"author": "Luis85",
+	"authorUrl": "https://github.com/Luis85",
+	"isDesktopOnly": true
+}

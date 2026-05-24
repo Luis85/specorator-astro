@@ -17,16 +17,16 @@ can't share a link, publish them, or really design how they look.
 
 Specorator Astro Viewer takes those same Bases and:
 
-- **Renders them as web pages** — your *books* base becomes a cards gallery,
-  your *projects* base becomes a clean table — using the very filters and
+- **Renders them as web pages** — your _books_ base becomes a cards gallery,
+  your _projects_ base becomes a clean table — using the very filters and
   formulas you already set up in Obsidian.
 - **Gives every item its own detail page** built from that note's content.
 - **Shows the live site in a tab inside Obsidian** (via the built-in Web
   Viewer), so editing a note updates the page in front of you.
 - **Builds a publishable static website** you can host anywhere.
 
-In short: *Bases is the spreadsheet; Specorator Astro Viewer is the designed
-website built from it.* It is powered by [Astro](https://astro.build) under the
+In short: _Bases is the spreadsheet; Specorator Astro Viewer is the designed
+website built from it._ It is powered by [Astro](https://astro.build) under the
 hood, but you never have to touch Astro to use it.
 
 ## Requirements
@@ -79,14 +79,14 @@ must be explicitly enabled (see the note below).
 
 - **Desktop only**, because building a site requires running local tools.
 - **Disclosures (transparency):**
-  - The plugin runs local commands (Node/Astro) and writes the generated site to
-    a folder **outside your vault** (the plugin's data folder); it also opens
-    your local preview URL in the Web Viewer. It does not send your content
-    anywhere and includes no telemetry.
-  - The optional custom-component feature **executes the code you put in
-    component notes at build time**, just like any build tool. Only enable it
-    for component notes you trust (e.g. ones you wrote) — not notes received from
-    others. It is off until you turn it on.
+    - The plugin runs local commands (Node/Astro) and writes the generated site to
+      a folder **outside your vault** (the plugin's data folder); it also opens
+      your local preview URL in the Web Viewer. It does not send your content
+      anywhere and includes no telemetry.
+    - The optional custom-component feature **executes the code you put in
+      component notes at build time**, just like any build tool. Only enable it
+      for component notes you trust (e.g. ones you wrote) — not notes received from
+      others. It is off until you turn it on.
 - **First version** focuses on the core: your Bases collections rendered as
   collections + detail pages, previewed live and publishable. Standalone pages
   written as notes, a navigation menu, and an SEO sitemap are designed and
