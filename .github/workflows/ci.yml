@@ -19,4 +19,19 @@ jobs:
                   cache: npm
             - run: npm ci
             # Single source of truth: identical to the local pre-push gate (QA-6).
+            # `verify` includes `embed:template:check`, asserting the generated
+            # template embed (bundled into main.js, DIST-BRAT-1) is in sync.
             - run: npm run verify
+
+    template:
+        # The bundled Astro template gate (C1): Astro `check` + a fixture build.
+        # Kept separate from `verify` because it installs Astro and runs a build.
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: '24'
+                  cache: npm
+            - run: npm ci
+            - run: npm run verify:template
