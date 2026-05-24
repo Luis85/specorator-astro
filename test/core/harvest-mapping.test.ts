@@ -6,6 +6,7 @@ import {
 	mapValue,
 	mapViewProperties,
 	normalizeGroupKey,
+	selectViewConfig,
 	type HarvestedConfig,
 	type HarvestedEntry,
 	type HarvestedGroup,
@@ -277,6 +278,73 @@ describe('mapViewProperties', () => {
 		expect(mapViewProperties(cfg).properties['formula.ppu']).toEqual({
 			displayName: 'formula.ppu',
 		});
+	});
+});
+
+describe('selectViewConfig', () => {
+	it('matches the named view and mirrors its type', () => {
+		const base = {
+			views: [
+				{ type: 'table', name: 'Table' },
+				{ type: 'cards', name: 'Reading list' },
+			],
+		};
+		expect(selectViewConfig(base, 'Reading list')).toEqual({ type: 'cards' });
+	});
+
+	it('mirrors a string groupBy as ASC', () => {
+		const base = { views: [{ type: 'cards', name: 'v', groupBy: 'note.status' }] };
+		expect(selectViewConfig(base, 'v')).toEqual({
+			type: 'cards',
+			groupBy: { property: 'note.status', direction: 'ASC' },
+		});
+	});
+
+	it('mirrors an object groupBy with its direction', () => {
+		const base = {
+			views: [
+				{ type: 'list', name: 'v', groupBy: { property: 'note.year', direction: 'DESC' } },
+			],
+		};
+		expect(selectViewConfig(base, 'v')).toEqual({
+			type: 'list',
+			groupBy: { property: 'note.year', direction: 'DESC' },
+		});
+	});
+
+	it('defaults an object groupBy without a direction to ASC', () => {
+		const base = { views: [{ type: 'table', name: 'v', groupBy: { property: 'note.x' } }] };
+		expect(selectViewConfig(base, 'v').groupBy).toEqual({
+			property: 'note.x',
+			direction: 'ASC',
+		});
+	});
+
+	it('ignores a groupBy object with no property', () => {
+		const base = { views: [{ type: 'table', name: 'v', groupBy: { direction: 'DESC' } }] };
+		expect(selectViewConfig(base, 'v')).toEqual({ type: 'table' });
+	});
+
+	it('falls back to the first view when the name does not match', () => {
+		const base = {
+			views: [
+				{ type: 'cards', name: 'A' },
+				{ type: 'list', name: 'B' },
+			],
+		};
+		expect(selectViewConfig(base, 'missing')).toEqual({ type: 'cards' });
+	});
+
+	it('defaults to table when the type is unsupported (e.g. map) or absent', () => {
+		expect(selectViewConfig({ views: [{ type: 'map', name: 'v' }] }, 'v')).toEqual({
+			type: 'table',
+		});
+		expect(selectViewConfig({ views: [{ name: 'v' }] }, 'v')).toEqual({ type: 'table' });
+	});
+
+	it('defaults to table when the base declares no views', () => {
+		expect(selectViewConfig({}, 'v')).toEqual({ type: 'table' });
+		expect(selectViewConfig({ views: [] }, 'v')).toEqual({ type: 'table' });
 	});
 });
 

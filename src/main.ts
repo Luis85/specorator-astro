@@ -25,7 +25,7 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		await settings.load();
 		this.addSettingTab(new SiteSettingTab(this.app, this, settings));
 
-		const bases = new BasesHarvesterAdapter();
+		const bases = new BasesHarvesterAdapter(this.app, this);
 		const writer = new FsSnapshotWriter(projectDir);
 		const webViewer = new WebViewerAdapter(this.app);
 		const astro = new AstroProcessAdapter(projectDir);

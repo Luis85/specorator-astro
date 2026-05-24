@@ -25,6 +25,73 @@ import type {
 	ViewType,
 } from './types';
 
+/** The native Bases view types this plugin can render (DESIGN §2; FR-4). */
+const SUPPORTED_VIEW_TYPES: readonly ViewType[] = ['table', 'cards', 'list'];
+
+/**
+ * Structural view of a parsed `.base` file (the relevant subset). A `.base` is
+ * YAML with a top-level `views:` array; each view carries at least a `type` and
+ * (optionally) a `name` and `groupBy`. The adapter parses the YAML via
+ * `obsidian.parseYaml` and hands the plain object here; this stays pure.
+ */
+export interface ParsedBaseFile {
+	views?: ParsedBaseView[];
+}
+
+/** One entry in a `.base` file's `views:` array (the subset we mirror). */
+export interface ParsedBaseView {
+	type?: string;
+	name?: string;
+	/** A property id, or `{ property, direction }` (Bases accepts both forms). */
+	groupBy?: string | { property?: string; direction?: string };
+}
+
+/** The view facts the harvester mirrors from the chosen `.base` view. */
+export interface SelectedViewConfig {
+	type: ViewType;
+	groupBy?: { property: BasesPropertyId; direction: 'ASC' | 'DESC' };
+}
+
+/**
+ * Pick the target view out of a parsed `.base` file and normalize the facts the
+ * snapshot mirrors: the native view `type` (defaulting to `table` for an unknown
+ * or absent type, since table is the most general) and an optional `groupBy`.
+ *
+ * Matching is by `name`; if no view matches (or the base names no views) the
+ * first view is used, then a `table` default. The map view is unsupported
+ * (DESIGN §2), so it normalizes down to `table` rather than failing — Bases
+ * still evaluates the data; only the *rendering* shape changes.
+ */
+export function selectViewConfig(base: ParsedBaseFile, viewName: string): SelectedViewConfig {
+	const views = base.views ?? [];
+	const match = views.find((view) => view.name === viewName) ?? views[0];
+	const groupBy = normalizeGroupBy(match?.groupBy);
+	return {
+		type: normalizeViewType(match?.type),
+		...(groupBy ? { groupBy } : {}),
+	};
+}
+
+/** Coerce a raw `.base` view type to a supported {@link ViewType}, else `table`. */
+function normalizeViewType(raw: string | undefined): ViewType {
+	return SUPPORTED_VIEW_TYPES.includes(raw as ViewType) ? (raw as ViewType) : 'table';
+}
+
+/** Normalize a `.base` `groupBy` (string or object) into the snapshot shape. */
+function normalizeGroupBy(
+	raw: ParsedBaseView['groupBy'],
+): { property: BasesPropertyId; direction: 'ASC' | 'DESC' } | undefined {
+	if (raw === undefined || raw === null) {
+		return undefined;
+	}
+	const property = typeof raw === 'string' ? raw : raw.property;
+	if (property === undefined || property === '') {
+		return undefined;
+	}
+	const direction = typeof raw === 'object' && raw.direction === 'DESC' ? 'DESC' : 'ASC';
+	return { property, direction };
+}
+
 /**
  * Structural view of a Bases `Value` (the real `obsidian.Value` satisfies this).
  *
