@@ -34,7 +34,7 @@
 	},
 	"devDependencies": {
 		"@commitlint/cli": "^20.0.0",
-		"@commitlint/config-conventional": "^20.0.0",
+		"@commitlint/config-conventional": "^21.0.1",
 		"@types/node": "25.9.1",
 		"@vitest/coverage-v8": "4.1.7",
 		"dependency-cruiser": "^17.4.0",
