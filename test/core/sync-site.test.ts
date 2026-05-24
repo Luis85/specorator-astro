@@ -1,7 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SyncSite } from '../../src/core/usecases/sync-site';
-import type { BasesPort, SettingsPort, SnapshotWriterPort } from '../../src/core/ports';
+import { UserFacingError } from '../../src/core/domain/errors';
+import type {
+	BasesPort,
+	CorePluginsPort,
+	SettingsPort,
+	SnapshotWriterPort,
+} from '../../src/core/ports';
 import type { ResolvedTarget, SiteConfig, ViewSnapshot } from '../../src/core/domain/types';
+
+function corePluginsFake(basesEnabled = true): CorePluginsPort {
+	return {
+		isBasesEnabled: () => basesEnabled,
+		isWebViewerEnabled: () => true,
+	};
+}
 
 function snapshotFor(target: ResolvedTarget): ViewSnapshot {
 	return {
@@ -33,7 +46,7 @@ describe('SyncSite', () => {
 			},
 		};
 
-		const result = await new SyncSite(settings, bases, writer).run();
+		const result = await new SyncSite(settings, bases, writer, corePluginsFake()).run();
 
 		expect(harvest).toHaveBeenCalledTimes(2);
 		expect(committed).toHaveLength(1);
@@ -51,10 +64,28 @@ describe('SyncSite', () => {
 		const bases: BasesPort = { harvest: vi.fn() };
 		const writer: SnapshotWriterPort = { commit };
 
-		const result = await new SyncSite(settings, bases, writer).run();
+		const result = await new SyncSite(settings, bases, writer, corePluginsFake()).run();
 
 		expect(commit).toHaveBeenCalledWith([]);
 		expect(result.written).toBe(0);
 		expect(result.warnings).toHaveLength(1);
+	});
+
+	it('refuses with a clear error and harvests nothing when Bases is disabled (FR-10)', async () => {
+		const harvest = vi.fn();
+		const commit = vi.fn();
+		const settings: SettingsPort = {
+			readSiteConfig: vi.fn(async () => ({ includes: [] })),
+		};
+		const bases: BasesPort = { harvest };
+		const writer: SnapshotWriterPort = { commit };
+
+		const sync = new SyncSite(settings, bases, writer, corePluginsFake(false));
+
+		await expect(sync.run()).rejects.toBeInstanceOf(UserFacingError);
+		await expect(sync.run()).rejects.toThrow(/Bases core plugin is disabled/);
+		// Guard short-circuits before any read/harvest/commit.
+		expect(harvest).not.toHaveBeenCalled();
+		expect(commit).not.toHaveBeenCalled();
 	});
 });

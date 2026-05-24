@@ -30,6 +30,20 @@ export interface WebViewerPort {
 }
 
 /**
+ * Reads whether the core plugins this plugin depends on are enabled (FR-10).
+ *
+ * The raw plugin-state read lives in the adapter (Obsidian's `internalPlugins`
+ * surface); the *decision* of what to require and which message to show is pure
+ * core logic (`checkCorePlugins`), so this port stays a thin two-flag read.
+ */
+export interface CorePluginsPort {
+	/** Whether the **Bases** core plugin is enabled. */
+	isBasesEnabled(): boolean;
+	/** Whether the **Web Viewer** core plugin is enabled. */
+	isWebViewerEnabled(): boolean;
+}
+
+/**
  * Ensures the bundled Astro project is scaffolded and installed in the plugin
  * data folder before any sync/preview/build (FR-9, FR-17; DESIGN §5.9).
  *
