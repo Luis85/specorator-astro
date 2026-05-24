@@ -14,6 +14,13 @@ comments, and discussion.
   There is no headless evaluation API; harvesting needs a mounted leaf.
 - **Transient leaf** — a briefly-opened, auto-closed tab used to mount a base
   and harvest it.
+- **Harvesting view** — the plugin's own namespaced custom Bases view
+  (`registerBasesView`), mounted in a transient leaf only so Obsidian evaluates
+  the base and fires `onDataUpdated`; it renders nothing.
+- **View-config mirroring** — reproducing the user's chosen native view by
+  reading that view's `type`/`groupBy`/`order` from the `.base` (Bases still
+  evaluates the filters/formulas; the plugin never reimplements the query
+  language). Unsupported types (e.g. map) fall back to `table`.
 - **Inclusion list** — the user-curated set of `(base, view)` targets to publish.
 - **Site config** — the single source of truth, managed in the plugin's
   **native settings** (settings tab) and persisted via Obsidian's data API:
