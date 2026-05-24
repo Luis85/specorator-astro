@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Plugin } from 'obsidian';
 import { SettingsStore } from '../../src/adapters/settings-store';
+import {
+	DEFAULT_DEV_PORT,
+	SETTINGS_SCHEMA_VERSION,
+} from '../../src/core/domain/settings-migration';
 
 function makePlugin(initial: unknown = null) {
 	let stored = initial;
@@ -19,6 +23,25 @@ describe('SettingsStore', () => {
 		const store = new SettingsStore(plugin);
 		await store.load();
 		expect(await store.readSiteConfig()).toEqual({ includes: [] });
+	});
+
+	it('forward-migrates the un-versioned { site } shape on load (NFR-8)', async () => {
+		const { plugin } = makePlugin({
+			site: {
+				siteUrl: 'https://example.com',
+				includes: [{ basePath: 'a.base', viewName: 'v' }],
+			},
+		});
+		const store = new SettingsStore(plugin);
+		await store.load();
+		expect(store.current()).toEqual({
+			version: SETTINGS_SCHEMA_VERSION,
+			site: {
+				siteUrl: 'https://example.com',
+				includes: [{ basePath: 'a.base', viewName: 'v' }],
+			},
+			toolchain: { port: DEFAULT_DEV_PORT },
+		});
 	});
 
 	it('round-trips a valid persisted config', async () => {
@@ -54,6 +77,26 @@ describe('SettingsStore', () => {
 		expect((await store.readSiteConfig()).includes).toEqual([
 			{ basePath: 'a.base', viewName: 'v' },
 		]);
+	});
+
+	it('exposes the toolchain config, defaulting the dev port', async () => {
+		const { plugin } = makePlugin(null);
+		const store = new SettingsStore(plugin);
+		await store.load();
+		expect(store.readToolchainConfig()).toEqual({ port: DEFAULT_DEV_PORT });
+	});
+
+	it('reads a persisted toolchain override', async () => {
+		const { plugin } = makePlugin({
+			site: { includes: [] },
+			toolchain: { port: 5000, astroBinPath: '/opt/astro/bin/astro' },
+		});
+		const store = new SettingsStore(plugin);
+		await store.load();
+		expect(store.readToolchainConfig()).toEqual({
+			port: 5000,
+			astroBinPath: '/opt/astro/bin/astro',
+		});
 	});
 
 	it('persists edits to the in-memory config', async () => {
