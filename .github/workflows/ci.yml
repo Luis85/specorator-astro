@@ -18,9 +18,5 @@ jobs:
                   node-version: '24'
                   cache: npm
             - run: npm ci
-            - run: npm run typecheck
-            - run: npm run lint
-            - run: npm run format:check
-            - run: npm run test:coverage
-            - run: npm run build
-            - run: npm run depcruise
+            # Single source of truth: identical to the local pre-push gate (QA-6).
+            - run: npm run verify
