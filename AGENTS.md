@@ -29,8 +29,8 @@ port interfaces; keep adapters thin. Don't extract shallow pass-through modules.
 
 ## Commands
 
-- `npm run verify` — the one gate: typecheck → lint → format:check →
-  test:coverage → build. Run this before every commit/push.
+- `npm run verify` — the one gate (identical to CI): typecheck → lint →
+  format:check → depcruise → test:coverage → build. Run before every commit/push.
 - `npm run dev` / `npm run build` — esbuild bundle to `main.js`.
 - `npm test` / `npm run test:coverage` — Vitest (core ≥ 90% coverage).
 - `npm run lint` / `npm run format` — ESLint / Prettier.
@@ -52,6 +52,6 @@ port interfaces; keep adapters thin. Don't extract shallow pass-through modules.
 
 - `src/core/domain/` — types + pure route planning.
 - `src/core/ports.ts` — port interfaces (the seams).
-- `src/core/usecases/` — orchestration (e.g. `SyncSite`).
+- `src/core/usecases/` — orchestration (`SyncSite`, `PreviewSite`).
 - `src/adapters/` — Obsidian/Node implementations.
 - `test/` — Vitest specs mirroring `src/`.

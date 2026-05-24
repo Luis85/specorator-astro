@@ -355,7 +355,6 @@ Per the official Plugin guidelines:
 | ----------------------------------------- | -------------------- | ------------------------------------ |
 | `typescript`                              | 6.0.3                | language / typecheck                 |
 | `esbuild`                                 | 0.28.0               | plugin bundler (`main.js`)           |
-| `builtin-modules`                         | 5.2.0                | esbuild externals                    |
 | `obsidian`                                | 1.12.3               | Obsidian API types                   |
 | `@types/node`                             | 25.9.1               | Node types                           |
 | `astro`                                   | 6.3.7                | site generator (in project)          |
