@@ -38,6 +38,21 @@ comments, and discussion.
 - **Component note** — an Obsidian note authoring an Astro component as an
   ` ```astro ` code block; transpiled into the Astro project. Opt-in
   (executes at build time).
+- **Snapshot loader** — the template's custom Astro Content Layer loader
+  (`src/content/loader.ts`) that reads the committed data dir (`<project>/data/`,
+  resolved from `config.root`, outside `src/`), validates each snapshot against
+  the **Zod 4** `snapshotSchema`, and feeds the `snapshots` collection. Each
+  entry's id is its authoritative listing `route`. In dev it registers a
+  `watcher.on('change'/'add', …)` over the data dir so re-syncing live-reloads
+  the preview (FR-7); this reloads **data** only, not `.astro` source.
+- **Registry barrel** — the template's `src/registry.ts`, a single stable module
+  mapping a component/layout **name** → an imported `.astro` component
+  (`resolveView`/`resolveLayout`). Keeping every view behind one barrel keeps the
+  file set stable so adding a view never trips Astro's new-file HMR gap (D9).
+- **View dispatch** — the `[...slug].astro` route emits one static listing page
+  per snapshot via `getStaticPaths()` and renders it with the registry component
+  named by `render.component`, defaulting to the view `type` (`table`/`cards`/
+  `list`) when the binding is `'auto'`.
 - **Theme / token** — the default look, driven by CSS-variable design tokens.
 - **Astro template** — the bundled Astro project under `templates/astro/**`,
   the **editable source of truth**. Gated by `npm run verify:template` (Astro
