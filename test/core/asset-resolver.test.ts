@@ -3,8 +3,40 @@ import {
 	AssetResolver,
 	PLACEHOLDER_ASSET_URL,
 	decideAssetAvailability,
+	isImageReference,
+	missingAsset,
 	normalizeReference,
 } from '../../src/core/domain/asset-resolver';
+
+describe('isImageReference', () => {
+	it('flags plain vault-relative image paths', () => {
+		expect(isImageReference('Attachments/cover.png')).toBe(true);
+		expect(isImageReference('poster.JPG')).toBe(true);
+		expect(isImageReference('icon.svg')).toBe(true);
+	});
+
+	it('flags an image embed/wikilink', () => {
+		expect(isImageReference('![[cover.png]]')).toBe(true);
+		expect(isImageReference('[[Films/poster.webp|alt]]')).toBe(true);
+	});
+
+	it('does not flag non-image text, links, or non-strings', () => {
+		expect(isImageReference('Frank Herbert')).toBe(false);
+		expect(isImageReference('doc.pdf')).toBe(false);
+		expect(isImageReference('[[Some Note]]')).toBe(false);
+		expect(isImageReference('')).toBe(false);
+		expect(isImageReference(null)).toBe(false);
+		expect(isImageReference(42)).toBe(false);
+		expect(isImageReference(['a', 'b'])).toBe(false);
+	});
+
+	it('does not flag remote or already-public image URLs (not vault sources)', () => {
+		expect(isImageReference('https://example.com/cover.png')).toBe(false);
+		expect(isImageReference('//cdn.example.com/cover.png')).toBe(false);
+		expect(isImageReference('data:image/png;base64,AAAA')).toBe(false);
+		expect(isImageReference('/assets/cover.png')).toBe(false);
+	});
+});
 
 describe('normalizeReference', () => {
 	it('returns null for an empty or whitespace-only reference', () => {
@@ -191,5 +223,14 @@ describe('decideAssetAvailability (graceful degradation, FR-16)', () => {
 		expect(
 			decideAssetAvailability({ sourcePath: 'a.png', exists: true, maxSizeBytes: 10 }),
 		).toBeNull();
+	});
+});
+
+describe('missingAsset', () => {
+	it('always returns the placeholder degradation for a missing source', () => {
+		const result = missingAsset('Attachments/gone.png');
+		expect(result.reason).toBe('not-found');
+		expect(result.placeholderUrl).toBe(PLACEHOLDER_ASSET_URL);
+		expect(result.warning).toContain('Attachments/gone.png');
 	});
 });

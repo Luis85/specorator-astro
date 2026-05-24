@@ -28,6 +28,51 @@ export interface ResolvedAsset {
 	url: string;
 }
 
+/** Image file extensions an entry value is treated as a card cover / image. */
+const IMAGE_EXTENSIONS: readonly string[] = [
+	'png',
+	'jpg',
+	'jpeg',
+	'gif',
+	'webp',
+	'svg',
+	'avif',
+	'bmp',
+	'ico',
+];
+
+/**
+ * Whether a raw value looks like a vault **image** reference worth resolving as
+ * a card cover / image-typed cell (FR-16, MVP per D7): an `![[embed]]` of an
+ * image, or a vault-relative path ending in an image extension. Already-public
+ * (`/assets/…`) and remote (`http(s)://`, `data:`) refs are not vault sources
+ * to copy, so they are not flagged. Used by the harvester to decide which entry
+ * values to route through the asset pipeline; non-image text is left untouched.
+ */
+export function isImageReference(value: unknown): boolean {
+	if (typeof value !== 'string') {
+		return false;
+	}
+	const trimmed = value.trim();
+	if (trimmed === '') {
+		return false;
+	}
+	// Remote / already-public references are not copyable vault sources.
+	if (/^(?:[a-z]+:)?\/\//i.test(trimmed) || /^data:/i.test(trimmed) || trimmed.startsWith('/')) {
+		return false;
+	}
+	const source = normalizeReference(trimmed);
+	if (source === null) {
+		return false;
+	}
+	const base = source.slice(source.lastIndexOf('/') + 1);
+	const dot = base.lastIndexOf('.');
+	if (dot <= 0) {
+		return false;
+	}
+	return IMAGE_EXTENSIONS.includes(base.slice(dot + 1).toLowerCase());
+}
+
 /**
  * Accumulates resolved assets across many references so the same source maps to
  * one URL (dedupe) and distinct sources never share a URL (collision-safe).
@@ -203,11 +248,7 @@ export const PLACEHOLDER_ASSET_URL = '/assets/_missing.svg';
  */
 export function decideAssetAvailability(input: AssetAvailability): AssetDegradation | null {
 	if (!input.exists) {
-		return {
-			reason: 'not-found',
-			warning: `Referenced attachment not found in vault: ${input.sourcePath} — rendering a placeholder.`,
-			placeholderUrl: PLACEHOLDER_ASSET_URL,
-		};
+		return missingAsset(input.sourcePath);
 	}
 	if (
 		input.maxSizeBytes !== undefined &&
@@ -223,4 +264,17 @@ export function decideAssetAvailability(input: AssetAvailability): AssetDegradat
 		};
 	}
 	return null;
+}
+
+/**
+ * The degradation for an attachment that could not be located in the vault — the
+ * common "missing" outcome, always non-null (unlike {@link decideAssetAvailability},
+ * which is null when the asset is fine). Renders a placeholder + a build warning.
+ */
+export function missingAsset(sourcePath: string): AssetDegradation {
+	return {
+		reason: 'not-found',
+		warning: `Referenced attachment not found in vault: ${sourcePath} — rendering a placeholder.`,
+		placeholderUrl: PLACEHOLDER_ASSET_URL,
+	};
 }
