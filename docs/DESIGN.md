@@ -707,6 +707,15 @@ conflict; full integration into the sections above is pending):
   vault config note (single source of truth) with an "add to nav" helper;
   frontmatter/folder structure only as optional suggestions.
 
+- **D15 — Distribution.** BRAT beta first; submit to the community marketplace
+  after the risky surfaces harden (matches Phase 4).
+- **D16 — Site URL.** A `site` URL in the config note; optional for dev/preview
+  (localhost origin), required at `astro build` to emit `sitemap.xml` +
+  canonical/OG (warn-don't-fail if missing).
+- **D17 — Unpublished links.** Wikilinks to notes not on the site render as plain
+  text (styled "not published") + a build-warning list; targets are **never
+  auto-included** (privacy-safe, self-contained).
+
 **Revised MVP (per D7):** one base → **table + cards** collection **plus
 per-entry detail pages** (core-fidelity bodies + assets) → curated list + vault
 config note → transient harvest (hybrid trigger) → safe default theme → live
