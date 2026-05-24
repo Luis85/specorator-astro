@@ -60,6 +60,17 @@ describe('planSync', () => {
 		expect(plan.warnings).toHaveLength(0);
 	});
 
+	it('skips a second base whose slug collides with the first', () => {
+		const plan = planSync({
+			includes: [
+				{ basePath: 'Books/books.base', viewName: 'Cards' },
+				{ basePath: 'Archive/books.base', viewName: 'Cards' },
+			],
+		});
+		expect(plan.targets.map((t) => t.route)).toEqual(['/books']);
+		expect(plan.warnings).toHaveLength(1);
+	});
+
 	it('skips and warns on route collisions', () => {
 		const plan = planSync({
 			includes: [

@@ -4,7 +4,8 @@ import type { SettingsStore } from './settings-store';
 /**
  * Native settings tab for editing the site configuration: the absolute site URL
  * and the curated list of published `(base, view)` targets. Replaces the former
- * hand-edited config note (D4).
+ * hand-edited config note (D4). Mutations look up each target by identity so
+ * concurrent edits and removals never write to the wrong row.
  */
 export class SiteSettingTab extends PluginSettingTab {
 	constructor(
@@ -28,9 +29,9 @@ export class SiteSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder('https://example.com')
 					.setValue(this.store.current().site.siteUrl ?? '')
-					.onChange(async (value) => {
+					.onChange((value) => {
 						const trimmed = value.trim();
-						await this.store.update((settings) => {
+						this.store.edit((settings) => {
 							settings.site.siteUrl = trimmed === '' ? undefined : trimmed;
 						});
 					}),
@@ -46,9 +47,10 @@ export class SiteSettingTab extends PluginSettingTab {
 					text
 						.setPlaceholder('Books/books.base')
 						.setValue(target.basePath)
-						.onChange(async (value) => {
-							await this.store.update((settings) => {
-								settings.site.includes[index].basePath = value.trim();
+						.onChange((value) => {
+							this.store.edit((settings) => {
+								const i = settings.site.includes.indexOf(target);
+								if (i !== -1) settings.site.includes[i].basePath = value.trim();
 							});
 						}),
 				)
@@ -56,9 +58,10 @@ export class SiteSettingTab extends PluginSettingTab {
 					text
 						.setPlaceholder('View name')
 						.setValue(target.viewName)
-						.onChange(async (value) => {
-							await this.store.update((settings) => {
-								settings.site.includes[index].viewName = value.trim();
+						.onChange((value) => {
+							this.store.edit((settings) => {
+								const i = settings.site.includes.indexOf(target);
+								if (i !== -1) settings.site.includes[i].viewName = value.trim();
 							});
 						}),
 				)
@@ -66,11 +69,13 @@ export class SiteSettingTab extends PluginSettingTab {
 					text
 						.setPlaceholder('/route (optional)')
 						.setValue(target.route ?? '')
-						.onChange(async (value) => {
+						.onChange((value) => {
 							const trimmed = value.trim();
-							await this.store.update((settings) => {
-								settings.site.includes[index].route =
-									trimmed === '' ? undefined : trimmed;
+							this.store.edit((settings) => {
+								const i = settings.site.includes.indexOf(target);
+								if (i !== -1)
+									settings.site.includes[i].route =
+										trimmed === '' ? undefined : trimmed;
 							});
 						}),
 				)
@@ -79,13 +84,11 @@ export class SiteSettingTab extends PluginSettingTab {
 						.setIcon('trash')
 						.setTooltip('Remove this view')
 						.onClick(() => {
-							void this.store
-								.update((settings) => {
-									settings.site.includes.splice(index, 1);
-								})
-								.then(() => {
-									this.display();
-								});
+							this.store.edit((settings) => {
+								const i = settings.site.includes.indexOf(target);
+								if (i !== -1) settings.site.includes.splice(i, 1);
+							});
+							this.display();
 						}),
 				);
 		});
@@ -95,14 +98,16 @@ export class SiteSettingTab extends PluginSettingTab {
 				.setButtonText('Add published view')
 				.setCta()
 				.onClick(() => {
-					void this.store
-						.update((settings) => {
-							settings.site.includes.push({ basePath: '', viewName: '' });
-						})
-						.then(() => {
-							this.display();
-						});
+					this.store.edit((settings) => {
+						settings.site.includes.push({ basePath: '', viewName: '' });
+					});
+					this.display();
 				}),
 		);
+	}
+
+	override hide(): void {
+		// Flush any debounced edits when the tab closes.
+		void this.store.save();
 	}
 }

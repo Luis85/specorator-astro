@@ -6,11 +6,15 @@ export class WebViewerAdapter implements WebViewerPort {
 	constructor(private readonly app: App) {}
 
 	async open(url: string): Promise<void> {
-		const leaf = this.app.workspace.getLeaf('tab');
+		// Reuse an existing Web Viewer tab if one is open, so repeated previews
+		// don't pile up duplicate leaves.
+		const existing = this.app.workspace.getLeavesOfType('webviewer');
+		const leaf = existing.length > 0 ? existing[0] : this.app.workspace.getLeaf('tab');
 		await leaf.setViewState({
 			type: 'webviewer',
 			state: { url, navigate: true },
 			active: true,
 		});
+		await this.app.workspace.revealLeaf(leaf);
 	}
 }

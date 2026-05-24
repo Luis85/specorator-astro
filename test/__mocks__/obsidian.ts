@@ -13,3 +13,13 @@ export class Notice {
 export function normalizePath(path: string): string {
 	return path.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
+
+// Synchronous stand-in so unit tests can drive debounced callbacks deterministically.
+export function debounce<T extends unknown[]>(cb: (...args: T) => unknown) {
+	const fn = (...args: T): void => {
+		cb(...args);
+	};
+	fn.cancel = () => fn;
+	fn.run = () => undefined;
+	return fn;
+}
