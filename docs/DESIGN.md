@@ -47,7 +47,8 @@ pipeline publishes** is unoccupied.
 - Produce a publishable static site (`astro build`).
 - Make Astro **components and layouts easy to manage and customize** — discover,
   scaffold, assign per base/view, and edit with live preview — without forking
-  the bundled template (see §5.6).
+  the bundled template. The component library is **authored as Obsidian-
+  compatible notes in a configurable vault folder** (see §5.6).
 - Be high quality: DDD architecture, fully testable, strict quality gates
   (see `REQUIREMENTS.md`).
 
@@ -163,10 +164,12 @@ allowed to `import { ... } from 'obsidian'` or touch `child_process`/`fs`.
         └─► [AstroProcessAdapter] astro build → dist/ (publishable static site)
 ```
 
-The same harvest pipeline also ingests two non-Bases inputs (see §5.7): **page
-notes** (individual vault notes designated as website pages) become `PageNode`s,
-and a **navigation config** becomes a `NavigationTree`. Bases collections, pages,
-and navigation together form the `SiteSpec` that Astro renders into a full site.
+The same harvest pipeline also ingests other vault inputs: **page notes**
+(individual vault notes designated as website pages) become `PageNode`s, a
+**navigation config** becomes a `NavigationTree` (both §5.7), and
+**component-library notes** are transpiled into Astro components (§5.6). Bases
+collections, pages, and navigation together form the `SiteSpec` that Astro
+renders into a full site, using the component library to display it.
 
 The only Obsidian-dependent step is the harvest. Because the static build reads
 committed JSON snapshots, **publishing does not require Obsidian running at build
@@ -253,24 +256,71 @@ into two trees:
       layouts/        #   BaseLayout.astro, SiteLayout.astro
       views/          #   Table.astro, Cards.astro, List.astro
       styles/         #   default tokens / CSS
-    user/             # user-owned, NEVER overwritten on upgrade
-      layouts/        #   custom layouts
-      views/          #   custom view components
-      components/     #   reusable partials
-      theme.css       #   user overrides
+    generated/        # transpiled FROM the vault component library (regenerated)
+      views/ layouts/ components/
+    user/             # advanced: hand-written .astro, NEVER overwritten
+      layouts/ views/ components/ theme.css
     registry.ts       # maps names -> components (see below)
 ```
 
 Template files carry a version header; on upgrade the plugin replaces `theme/`
-and leaves `user/` untouched. A user "ejects" a default by copying it into
-`user/` and editing there.
+and leaves `generated/` (rebuilt from the vault) and `user/` untouched.
+
+**Vault-hosted component library (component notes).** The primary authoring
+surface is **inside the vault**, not the Astro project. On install the user
+sets a **component library folder** (a plugin setting). Each component is a
+**fully Obsidian-compatible frontmatter markdown note** in that folder (the
+outer fence below is `~~~` only so the inner ` ``` ` renders — the real note
+uses normal markdown):
+
+~~~markdown
+---
+component:
+  name: BookCard           # registry name
+  kind: view               # view | layout | partial
+  appliesTo: [cards]       # base view types, or "page" / "layout"
+  props: [cover, author]   # declared inputs (optional, for typing/docs)
+---
+
+```astro
+---
+const { entry } = Astro.props;
+---
+<article class="book">
+  <img src={entry.values["note.cover"]} alt="" />
+  <h3>{entry.values["file.name"]}</h3>
+  <p>{entry.values["note.author"]}</p>
+</article>
+```
+~~~
+
+The note stays valid Obsidian markdown (it renders harmlessly as frontmatter +
+a fenced code block). The harvester reads each component note, **extracts the
+fenced ` ```astro ` block as the template** and the frontmatter as metadata, and
+**transpiles** it into a real `.astro` file under `src/generated/` (minimal
+transpilation: write the block verbatim, prepending a generated props script).
+Because authoring is plain markdown, components are versioned, synced, searched,
+and linked like any other note. The component-library folder is **excluded from
+page detection** (§5.7) so components never become website pages.
+
+> Authoring-format decision **(to finalize)**: a fenced ` ```astro ` block keeps
+> the note Obsidian-valid while giving full Astro power, and needs only trivial
+> transpilation. The alternative (a templated markdown body with mustache-style
+> bindings) is simpler for non-coders but far less expressive. Recommended:
+> fenced block, with a future simple-mode on top.
+
+**Adding a component.** A *Create component* command scaffolds a new component
+note (frontmatter + stub block) in the library folder. On save, the plugin
+re-transpiles it into `src/generated/`, refreshes the registry, and — with the
+dev server running — it is immediately available and live-previewed (HMR).
 
 **Registry + resolution.** A generated `registry.ts` maps a **component name**
-(string) to an imported `.astro` component, scanning both `theme/views` and
-`user/views` with **user entries shadowing template entries of the same name**.
-Each snapshot's `view.type` resolves to a component name (default: the view
-type itself — `table`/`cards`/`list`), but the assignment can be overridden
-per base/view (below). Layouts resolve the same way.
+(string) to an imported `.astro` component, scanning `generated/` (from vault
+notes), `user/`, and `theme/`. Precedence on name collision:
+**vault component note → hand-written `user/` → `theme/` default.** Each
+snapshot's `view.type` resolves to a component name (default: the view type
+itself — `table`/`cards`/`list`), overridable per base/view (below). Layouts
+resolve the same way.
 
 **Assignment (which layout/component renders a given base/view).** Stored in a
 plugin-managed **sidecar config** (e.g. `view-bindings.json` in the plugin data
@@ -423,9 +473,10 @@ consumed by the same Astro Content Layer loaders (§5.7).
   Astro template → `astro dev` → open in Web Viewer, via a manual command.
 - **Phase 2 — Live + build + customization:** auto-sync snapshots on data
   change (loader watcher → HMR), cards & list views, settings tab, `astro build`
-  command, and the **component/layout system** (§5.6): template/user split,
-  registry resolution, per-base/view assignment via sidecar, and scaffold
-  commands.
+  command, and the **component/layout system** (§5.6): the **vault-hosted
+  component library** (component notes → transpiled `.astro`), registry
+  resolution, per-base/view assignment via sidecar, and *Create component* /
+  scaffold commands.
 - **Phase 3 — Full website:** standalone **page** notes + home page, the
   **navigation** model/menu, `sitemap.xml` via `@astrojs/sitemap`, note-body
   rendering + cross-page wikilink resolution, multiple bases / code-block bases,

@@ -37,8 +37,9 @@
   same snapshots.
 - **FR-7** — Re-sync snapshots when Base data changes and trigger a dev-server
   live reload (Content Layer loader `watcher`).
-- **FR-8** — Expose commands and a settings tab (e.g. project path, port,
-  Node/binary path override, build output location).
+- **FR-8** — Expose commands and a settings tab covering at least: the
+  **component-library folder** (FR-11f), the **pages folder** (FR-12), project
+  path, dev-server port, Node/binary path override, and build output location.
 - **FR-9** — Scaffold and bootstrap the bundled Astro template into the plugin
   data folder on first run (including dependency install), surfacing build/
   install errors in a visible output channel.
@@ -60,6 +61,23 @@
     settings UI (dropdowns populated from the registry).
   - **FR-11e** — Editing a component/layout/theme file while the dev server runs
     MUST be reflected live in the Web Viewer preview (HMR).
+  - **FR-11f (Vault component library)** — The component library MUST be
+    authorable **inside the vault** in a **configurable folder** set via plugin
+    settings (on install). Each component is a **fully Obsidian-compatible
+    frontmatter markdown note** (renders harmlessly in Obsidian).
+  - **FR-11g (Transpilation)** — The plugin MUST read each component note,
+    extract its metadata (frontmatter) and template (a fenced ` ```astro `
+    block), and transpile it into a real Astro component available to the site
+    and registry (see `DESIGN.md §5.6`).
+  - **FR-11h (Add component)** — The plugin MUST provide a *Create component*
+    command that scaffolds a new component note in the library folder; on save
+    the component MUST become available (re-transpile → registry refresh → HMR)
+    without manual steps.
+  - **FR-11i (No page leakage)** — The component-library folder MUST be excluded
+    from website page detection (FR-12) so component notes never become pages.
+  - **FR-11j (Precedence)** — On name collision, resolution precedence MUST be:
+    vault component note → hand-written `user/` `.astro` → bundled `theme/`
+    default.
 - **FR-12 (Standalone pages)** — Beyond Bases collections, the plugin MUST turn
   **individual vault notes** into website pages. A note opts in via frontmatter
   (e.g. `site: true` / a `page` type) or a configured "pages" folder; one note
