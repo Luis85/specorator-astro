@@ -55,6 +55,22 @@ comments, and discussion.
   data folder before any sync/preview/build (the `EnsureProject` use-case behind
   `ProjectBootstrapPort`). Idempotent and resumable; the pure use-case decides
   if/what to scaffold, driving the adapter's raw I/O via `BootstrapDriverPort`.
+- **Toolchain config** — the dev-server port (default **4321**, auto-fallback)
+  plus optional absolute **Node / Astro binary path** overrides, held in the
+  versioned settings (`ToolchainConfig`). The overrides exist for the macOS GUI
+  `PATH` gap and non-default installs (FR-8 / NFR-4).
+- **Versioned settings & forward migration** — the persisted settings document
+  carries a `version` and is upgraded on load by the pure `migrate()`
+  (`settings-migration.ts`), which tolerantly lifts older/unversioned blobs
+  (incl. the pre-C4 `{ site }` shape) and junk to the current schema, defaulting
+  new fields (NFR-8 / D4).
+- **Dev URL parse** — the dev-server URL is taken from the line Astro **prints**
+  to stdout (`parseDevServerUrl`), not from the requested port: Astro
+  auto-falls-back if the port is busy, so the printed URL is **authoritative**.
+- **Process-tree kill** — teardown must end the whole spawned group, not just the
+  shell: the adapter spawns `detached` and `stop()` signals the group
+  (`process.kill(-pid)` on POSIX, `taskkill /T /F` on Windows) so no orphaned
+  vite/node keeps holding the port (NFR-2/NFR-4).
 
 ## Architecture terms (from the "deep modules" lens)
 
