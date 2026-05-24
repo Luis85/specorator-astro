@@ -32,6 +32,22 @@ comments, and discussion.
   ` ```astro ` code block; transpiled into the Astro project. Opt-in
   (executes at build time).
 - **Theme / token** — the default look, driven by CSS-variable design tokens.
+- **Astro template** — the bundled Astro project under `templates/astro/**`,
+  the **editable source of truth**. Gated by `npm run verify:template` (Astro
+  `check` + a fixture build). Not shipped as loose files: a build step embeds it
+  into `main.js` (see _embedded template_).
+- **Embedded template** — the generated TS asset module
+  (`src/adapters/generated/embedded-template.ts`) that `scripts/embed-template.mjs`
+  serializes from `templates/astro/**` so the template ships inside `main.js`
+  (DIST-BRAT-1). `embed:template:check` keeps it in sync in CI.
+- **Template-owned vs. user-owned** — each templated file's ownership
+  (`classifyOwnership`): `src/user/**` is **user-owned** (written once, never
+  overwritten — FR-11a/NFR-9); everything else is **template-owned** (rewritten
+  on every bootstrap, which doubles as the upgrade path).
+- **Bootstrap** — ensuring the Astro project is scaffolded + installed in the
+  data folder before any sync/preview/build (the `EnsureProject` use-case behind
+  `ProjectBootstrapPort`). Idempotent and resumable; the pure use-case decides
+  if/what to scaffold, driving the adapter's raw I/O via `BootstrapDriverPort`.
 
 ## Architecture terms (from the "deep modules" lens)
 
