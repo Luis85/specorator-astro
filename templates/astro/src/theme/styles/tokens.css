@@ -1,0 +1,25 @@
+/*
+ * specorator-template-version: 1
+ * Template-owned default design tokens. Replaced on plugin upgrade.
+ * User overrides belong in src/user/theme.css, which loads last and wins.
+ */
+:root {
+	--sp-color-bg: #ffffff;
+	--sp-color-fg: #1a1a1a;
+	--sp-color-muted: #6b7280;
+	--sp-color-accent: #3b5bdb;
+	--sp-font-body:
+		-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	--sp-space: 1rem;
+	--sp-radius: 0.5rem;
+	--sp-maxwidth: 64rem;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--sp-color-bg: #11151c;
+		--sp-color-fg: #e6e6e6;
+		--sp-color-muted: #9aa4b2;
+		--sp-color-accent: #748ffc;
+	}
+}

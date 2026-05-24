@@ -1,0 +1,9 @@
+/*
+ * User-owned theme overrides. This file is created once on first bootstrap and
+ * is NEVER overwritten when the plugin's bundled template is upgraded
+ * (FR-11a / NFR-7). Redefine the design tokens from src/theme/styles/tokens.css
+ * here — because it loads last, your values win without editing any component.
+ *
+ * Example:
+ *   :root { --sp-color-accent: #e8590c; }
+ */

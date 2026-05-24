@@ -17,7 +17,18 @@ const disableTypeAwareRules = {
 
 export default tseslint.config(
 	{
-		ignores: ['main.js', 'dist/**', 'coverage/**', 'docs/api/**', 'node_modules/**'],
+		ignores: [
+			'main.js',
+			'dist/**',
+			'coverage/**',
+			'docs/api/**',
+			'node_modules/**',
+			// Machine-generated template embed; kept in sync by `embed:template:check`.
+			'src/adapters/generated/**',
+			// The bundled Astro project is a separate program, type-checked and
+			// built by `npm run verify:template` (Astro `check`), not the plugin gate.
+			'templates/**',
+		],
 	},
 
 	// TypeScript recommended rules.

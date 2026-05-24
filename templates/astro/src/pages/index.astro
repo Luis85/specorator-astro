@@ -1,0 +1,15 @@
+---
+/*
+ * Template-owned home route. Proves the scaffolded project is runnable from
+ * first bootstrap and exercises the layout + registry seam. The data-driven
+ * collection and detail routes arrive with C5/C8.
+ */
+import { resolveLayout, resolveView } from '../registry';
+
+const BaseLayout = resolveLayout('BaseLayout');
+const Placeholder = resolveView('placeholder');
+---
+
+<BaseLayout title="Specorator site">
+	<Placeholder />
+</BaseLayout>

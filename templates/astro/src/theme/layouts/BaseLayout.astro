@@ -1,0 +1,44 @@
+---
+/*
+ * specorator-template-version: 1
+ * Template-owned default site layout. Replaced on plugin upgrade.
+ * To customize without losing your work on upgrade, add a same-named layout
+ * under src/user/layouts/ (it shadows this via the registry, FR-11a/FR-11j).
+ */
+import '../styles/tokens.css';
+import '../../user/theme.css';
+
+interface Props {
+	title?: string;
+}
+
+const { title = 'Specorator site' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{title}</title>
+	</head>
+	<body>
+		<main class="sp-shell">
+			<slot />
+		</main>
+	</body>
+</html>
+
+<style>
+	body {
+		margin: 0;
+		background: var(--sp-color-bg);
+		color: var(--sp-color-fg);
+		font-family: var(--sp-font-body);
+	}
+	.sp-shell {
+		max-width: var(--sp-maxwidth);
+		margin: 0 auto;
+		padding: var(--sp-space);
+	}
+</style>

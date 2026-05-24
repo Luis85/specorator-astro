@@ -1,0 +1,19 @@
+{
+	"name": "specorator-astro-site",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Bundled Astro project scaffolded by Specorator Astro Viewer into the plugin data folder. Edit src/user/** to customize; src/theme/** is template-owned and replaced on upgrade.",
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"check": "astro check"
+	},
+	"dependencies": {
+		"astro": "6.3.7"
+	},
+	"devDependencies": {
+		"@astrojs/check": "0.9.9",
+		"typescript": "6.0.3"
+	}
+}
