@@ -44,8 +44,10 @@
 - **FR-7** — Re-sync snapshots when Base data changes and trigger a dev-server
   live reload (Content Layer loader `watcher`).
 - **FR-8** — Expose commands and a settings tab covering at least: the
-  **component-library folder** (FR-11f), the **pages folder** (FR-12), project
-  path, dev-server port, Node/binary path override, and build output location.
+  **site-config note** path and the `Site/` layout (default `Site/components`
+  (FR-11f), `Site/pages` (FR-12), `Site/site.md` (FR-19) — all configurable, D19),
+  dev-server port (default 4321, auto-fallback), Node/binary path override, and
+  build output / export location.
 - **FR-9** — Scaffold and bootstrap the bundled Astro template into the plugin
   data folder on first run (including dependency install), surfacing build/
   install errors in a visible output channel.
@@ -132,15 +134,42 @@
   execute at build time. The plugin MUST NOT claim a sandbox and MUST NOT spawn
   content-derived commands (`DESIGN.md §5.10`).
 
-> **MVP / phasing.** FR-1 (code-block bases), FR-11f–k (vault code-fence
-> component library), and **FR-12–FR-16** (pages, navigation, sitemap, routing,
-> assets) are **post-MVP** (`DESIGN.md §9`). The MVP is FR-2..FR-10 for **table
-> + cards** with the safe default `theme/` components.
+- **FR-19 (Site config note)** — A single **vault-resident, plugin-managed,
+  hand-editable config note** (`Site/site.md`) is the source of truth for: the
+  curated **inclusion list** of base files, the **per-(base,view) selection** and
+  **routes**, component/layout **bindings**, **navigation**, and the **site URL**.
+  The plugin re-reads it on change (no fighting manual edits) and it is
+  schema-versioned (NFR-8). (D1/D3/D4/D14/D16)
+- **FR-20 (Sync trigger)** — Provide a manual *Sync site* command; auto-sync on
+  first preview; and an optional, **debounced live-resync of only the
+  actively-previewed base** (toggle to disable). (D2)
+- **FR-21 (Detail pages — MVP)** — Each published base entry MUST render its own
+  **detail page** (note body at core fidelity, FR-8/D8) — part of the MVP. (D7)
+- **FR-22 (Build output & export)** — `astro build` outputs to `dist/` in the
+  plugin data folder; an **Export/Reveal build** action copies it to a chosen
+  location; deploy is manual to any static host. (D6)
+- **FR-23 (Site URL / SEO)** — A `site` URL in the config note: optional for
+  dev/preview (localhost origin), **required at build** to emit `sitemap.xml` +
+  canonical/OpenGraph; warn-don't-fail if absent. (D16)
+- **FR-24 (Unpublished links)** — Wikilinks to notes **not** on the site render
+  as plain text (styled "not published") + a build-warning list; targets are
+  **never auto-included** (privacy-safe). (D17)
+
+> **MVP / phasing (updated per interview).** **MVP** = FR-2..FR-10, FR-19..FR-24,
+> and FR-16 (assets) for **table + cards collections + per-entry detail pages**
+> with the safe default `theme/` components and one token theme. **Post-MVP:**
+> FR-1 (code-block bases), FR-11f–k (vault code-fence component library, opt-in),
+> and **FR-12–FR-15** (standalone pages, navigation, sitemap — models decided,
+> build deferred). See `DESIGN.md §9`/§11.
 
 ## 2. Non-functional requirements
 
 - **NFR-1 (Platform)** — Desktop only; MUST set `isDesktopOnly: true` and guard
-  Node usage with `Platform.isDesktop`.
+  Node usage with `Platform.isDesktop`. A **system Node.js is a documented
+  prerequisite** (detected + guided; no bundled runtime — D10).
+- **NFR-13 (Single site v1)** — v1 supports **one site per vault** (one config
+  note → one Astro project); the design MUST NOT preclude multiple sites later
+  (D5).
 - **NFR-2 (Isolation)** — A long-running Astro dev server SHOULD run in a child
   process to avoid blocking Obsidian's UI thread; the plugin MUST terminate any
   spawned process in `onunload`.
@@ -166,8 +195,8 @@
 - **NFR-10 (Generated-site quality)** — Bundled `theme/` components MUST emit
   reasonable `<title>`/meta (and OpenGraph/canonical where a `site` URL is set)
   and meet basic accessibility (semantic landmarks, alt text, keyboard nav).
-- **NFR-11 (Licensing/i18n)** — The repo MUST choose an OSI license (recommend
-  MIT or Apache-2.0); plugin-UI internationalization is **out of scope for v1**.
+- **NFR-11 (Licensing/i18n)** — License is **MIT** (D13); plugin-UI
+  internationalization is **out of scope for v1**.
 - **NFR-12 (Namespacing)** — The registered Bases `viewId` and any data-folder
   paths MUST be namespaced to avoid collisions with other plugins.
 - **NFR-6 (Privacy/Network)** — Any network access (Astro toolchain, Web Viewer)
@@ -242,6 +271,7 @@
   (semver `x.y.z`, no leading `v`).
 - **DIST-MP-3** — `id` and `name` MUST NOT contain "Obsidian" (or "Obsi-"/
   "-sidian"), MUST be Basic Latin, no emoji, and MUST NOT duplicate core names.
+  Chosen (D19): `id: specorator-astro`, `name: "Specorator"`.
 - **DIST-MP-4** — `manifest.json` MUST set `isDesktopOnly: true`.
 - **DIST-MP-5** — Maintain a root `versions.json` mapping plugin version →
   required `minAppVersion`.

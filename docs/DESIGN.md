@@ -212,6 +212,17 @@ time** once snapshots exist.
 ## 5. Component design
 
 ### 5.1 Harvester (BasesPort → BasesHarvesterAdapter)
+
+**Driven by the site config note.** Harvesting is scoped to a **user-curated
+inclusion list** (D1/D4) held in the vault config note (`Site/site.md`): a set of
+base files, each with the **view(s)** the user chose to publish (D3) and their
+routes. The harvester iterates only this list — not the whole vault.
+
+**Trigger (D2).** A manual *Sync site* command is the baseline; the plugin also
+auto-syncs on first preview and offers an optional, **debounced live-resync of
+just the base currently being previewed** (kept briefly mounted to avoid
+re-flashing), with a toggle to disable.
+
 Registers a custom Bases view (`registerBasesView`). In `onDataUpdated()` it
 walks `this.data.groupedData`; for each entry it reads every property id in
 `config.getOrder()` (plus the `groupBy` property) via `entry.getValue(id)`,
@@ -408,13 +419,13 @@ snapshot's `view.type` resolves to a component name (default: the view type
 itself — `table`/`cards`/`list`), overridable per base/view (below). Layouts
 resolve the same way.
 
-**Assignment (which layout/component renders a given base/view).** Stored in a
-plugin-managed **sidecar config** (e.g. `view-bindings.json` in the plugin data
-folder), keyed by `{ basePath | codeblock-id, viewName }` → `{ component,
-layout }`. We deliberately do **not** rely on adding custom keys to `.base`
-files, because Obsidian's Bases editor may not preserve unknown keys
-**(unverified)** — the sidecar is authoritative. The snapshot writer copies the
-resolved binding into each snapshot so Astro renders deterministically.
+**Assignment (which layout/component renders a given base/view).** Stored in the
+**vault site-config note** (D4 — not a data-folder sidecar and not in the `.base`
+file, whose editor may drop unknown keys), keyed by `{ basePath | codeblock-id,
+viewName }` → `{ component, layout, route }`. The config note is the single
+source of truth for the inclusion list, per-view selection, routes, bindings,
+navigation, and the `site` URL; the snapshot writer copies the resolved binding
+into each snapshot so Astro renders deterministically.
 
 **Management affordances:**
 - Commands: *Scaffold component/layout from template* (creates a stub in
@@ -452,11 +463,11 @@ harvester/loader against that route table** (Astro has no built-in wikilink
 resolver), not at render time. Newly *designating* a note as a page is fine for
 `astro build` but, like new components, needs a dev-server restart to appear.
 
-**Navigation sources** (resolved in priority order, all native-friendly):
-1. an explicit **navigation config** — a plugin-managed sidecar
-   (`navigation.json`) or a designated config note containing an ordered list;
-2. **page frontmatter** hints (`nav: { title, order, group }`);
-3. derived fallback from the pages folder structure.
+**Navigation (D14).** The **primary, authoritative** source is an ordered,
+nestable nav list **curated in the site-config note** (`Site/site.md`), with an
+*add to nav* helper when a base/page is included. Page frontmatter hints
+(`nav: { title, order, group }`) and folder structure are offered only as
+optional auto-suggestions, never the primary source (inferred nav is brittle).
 The resolved tree is written to a `navigation` snapshot; Astro layouts render it
 as the site menu (and breadcrumbs), so the same nav appears across all pages.
 
@@ -498,9 +509,10 @@ to a placeholder with a build warning rather than failing the build.
 
 First run scaffolds the template into the data folder and installs dependencies
 — the make-or-break first experience. Design points:
-- **Toolchain detection first.** Probe for Node/npm (using the NFR-4 resolution);
-  if absent, show actionable guidance and a settings field for the Node path —
-  never fail silently.
+- **Toolchain detection first.** A **system Node is a documented prerequisite**
+  (D10 — no bundled/auto-downloaded runtime). Probe for Node/npm (using the NFR-4
+  resolution); if absent, show actionable install guidance and a settings field
+  for the Node path — never fail silently.
 - **Install UX.** Run `npm install` (with `--legacy-peer-deps` if the pinned
   integrations require it, §5.7) via the process adapter, streaming progress to a
   visible panel; the install is large and slow, so it is explicit and cancelable.
@@ -627,19 +639,21 @@ consumed by the same Astro Content Layer loaders (§5.7).
   `viewType` programmatically and `onDataUpdated` fires; (b) confirm Vite's HMR
   websocket works inside the Web Viewer; (c) spawn the project-local `astro`
   binary, parse its URL, and kill the process tree cleanly. Go/no-go gate.
-- **Phase 1 — MVP:** one `.base` → **table + cards** → JSON snapshot → bundled
-  **safe** Astro template (Zod-validated, no author code) → `astro dev` → open in
-  Web Viewer; auto-resync on data change (the "wow"); `astro build` → `dist/`.
-  CSS-variable theming only.
+- **Phase 1 — MVP:** curated inclusion list + vault config note → one `.base` →
+  **table + cards** collection **plus per-entry detail pages** (core-fidelity
+  bodies + the **asset pipeline**, §5.8) → JSON snapshots → bundled **safe**
+  Astro template (Zod-validated, no author code, one token theme) → transient
+  harvest (hybrid trigger) → `astro dev` → open in Web Viewer; live resync on
+  data change (the "wow"); `astro build` → `dist/` + export.
 - **Phase 2 — Customization:** settings tab, list view, per-base/view component
   & layout **assignment** (sidecar), the **vault-hosted code-fence component
   library** behind one-time consent (§5.6/§5.10), *Create component* + right-
   click affordances.
 - **Phase 3 — Full website (post-validation):** standalone **page** notes + home
-  page, **navigation** menu, `sitemap.xml`, asset pipeline (§5.8), cross-page
-  wikilink resolution, multiple / code-block bases. (A self-contained Astro map
-  renderer from coordinate frontmatter — no Obsidian plugin — could be evaluated
-  here without breaking the native-only rule.)
+  page, the **navigation** menu (model decided, D14), `sitemap.xml` + site-URL
+  SEO, cross-page wikilink resolution, multiple / code-block bases. (A
+  self-contained Astro map renderer from coordinate frontmatter — no Obsidian
+  plugin — could be evaluated here without breaking the native-only rule.)
 - **Phase 4 — Release:** docs (TypeDoc), BRAT beta, marketplace submission.
 
 ## 10. Open questions
@@ -715,6 +729,14 @@ conflict; full integration into the sections above is pending):
 - **D17 — Unpublished links.** Wikilinks to notes not on the site render as plain
   text (styled "not published") + a build-warning list; targets are **never
   auto-included** (privacy-safe, self-contained).
+
+- **D19 — Ratified defaults.** Plugin `id: specorator-astro`, name "Specorator";
+  package manager **npm**; dev port **4321** (auto-fallback if busy, configurable);
+  default vault layout under **`Site/`** (`Site/components`, `Site/pages`,
+  `Site/site.md` config note), all configurable; **`AGENTS.md` canonical** with
+  `CLAUDE.md` symlinked; **Conventional Commits** + commitlint + release-please +
+  Dependabot; required CI checks = typecheck, lint, format:check, test:coverage,
+  build; config/settings schema **versioned with forward migration**.
 
 **Revised MVP (per D7):** one base → **table + cards** collection **plus
 per-entry detail pages** (core-fidelity bodies + assets) → curated list + vault
