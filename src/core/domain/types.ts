@@ -70,6 +70,12 @@ export interface EntryGroup {
 /** The serialized output of harvesting one `(base, view)`. */
 export interface ViewSnapshot {
 	baseId: string;
+	/**
+	 * The listing route for this view (the resolved, collision-checked route from
+	 * planning, with a leading slash, e.g. `/books`). Authoritative for the
+	 * rendered listing page; per-entry detail routes are derived from it.
+	 */
+	route: string;
 	source: { kind: 'file' | 'codeblock'; path: string };
 	view: {
 		type: ViewType;

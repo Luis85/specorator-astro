@@ -9,6 +9,10 @@ import type { ViewSnapshot } from '../../src/core/domain/types';
 function snapshot(baseId: string, viewName = 'Default'): ViewSnapshot {
 	return {
 		baseId,
+		route: `/${baseId
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '')}`,
 		source: { kind: 'file', path: `${baseId}.base` },
 		view: { type: 'table', name: viewName, order: [] },
 		render: { component: 'table', layout: 'BaseLayout' },

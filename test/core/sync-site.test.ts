@@ -6,6 +6,7 @@ import type { ResolvedTarget, SiteConfig, ViewSnapshot } from '../../src/core/do
 function snapshotFor(target: ResolvedTarget): ViewSnapshot {
 	return {
 		baseId: target.basePath,
+		route: target.route,
 		source: { kind: 'file', path: target.basePath },
 		view: { type: 'table', name: target.viewName, order: [] },
 		render: { component: target.component, layout: target.layout },

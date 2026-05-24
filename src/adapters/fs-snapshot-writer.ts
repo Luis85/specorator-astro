@@ -23,6 +23,8 @@ interface SnapshotIndexEntry {
 	baseId: string;
 	/** The view name within that base (`ViewSnapshot.view.name`). */
 	view: string;
+	/** The listing route for this view (`ViewSnapshot.route`, leading slash). */
+	route: string;
 	/** Path to the snapshot JSON, relative to the data dir (POSIX separators). */
 	file: string;
 }
@@ -41,7 +43,7 @@ interface SnapshotIndex {
  *
  * ```
  * <projectDir>/data/
- *   index.json                  # manifest: { version, generatedAt, snapshots: [{ baseId, view, file }] }
+ *   index.json                  # manifest: { version, generatedAt, snapshots: [{ baseId, view, route, file }] }
  *   snapshots/<slug>.json       # one ViewSnapshot per file, slug derived from baseId
  * ```
  *
@@ -98,7 +100,12 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 			const filePosix = `${SNAPSHOTS_DIRNAME}/${filename}`;
 			const absolute = path.join(snapshotsDir, filename);
 			await writeFileSynced(absolute, `${JSON.stringify(snapshot, null, '\t')}\n`);
-			entries.push({ baseId: snapshot.baseId, view: snapshot.view.name, file: filePosix });
+			entries.push({
+				baseId: snapshot.baseId,
+				view: snapshot.view.name,
+				route: snapshot.route,
+				file: filePosix,
+			});
 		}
 
 		const index: SnapshotIndex = {

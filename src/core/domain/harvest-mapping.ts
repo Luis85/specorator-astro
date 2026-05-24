@@ -279,6 +279,7 @@ export function buildViewSnapshot(inputs: HarvestInputs): ViewSnapshot {
 
 	return {
 		baseId: baseIdFromPath(target.basePath),
+		route: target.route,
 		source: { kind: 'file', path: target.basePath },
 		view: {
 			type: viewType,

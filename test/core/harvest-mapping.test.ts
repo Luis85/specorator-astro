@@ -384,6 +384,7 @@ describe('buildViewSnapshot', () => {
 
 		expect(snapshot).toEqual({
 			baseId: 'books',
+			route: '/books',
 			source: { kind: 'file', path: 'Books/books.base' },
 			view: {
 				type: 'cards',
