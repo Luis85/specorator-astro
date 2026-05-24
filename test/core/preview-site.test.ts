@@ -1,60 +1,135 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PreviewSite } from '../../src/core/usecases/preview-site';
-import type { AstroProcessPort, WebViewerPort } from '../../src/core/ports';
+import { SyncSite } from '../../src/core/usecases/sync-site';
+import { UserFacingError } from '../../src/core/domain/errors';
+import type {
+	AstroProcessPort,
+	BasesPort,
+	CorePluginsPort,
+	ProjectBootstrapPort,
+	SettingsPort,
+	SnapshotWriterPort,
+	WebViewerPort,
+} from '../../src/core/ports';
 
-function astroFake(url = 'http://localhost:4321'): AstroProcessPort {
+function corePluginsFake(state: { bases?: boolean; webViewer?: boolean } = {}): CorePluginsPort {
 	return {
-		startDev: vi.fn(async () => ({ url })),
-		build: vi.fn(),
-		stop: vi.fn(),
+		isBasesEnabled: () => state.bases ?? true,
+		isWebViewerEnabled: () => state.webViewer ?? true,
 	};
 }
 
+/** A real `SyncSite` over fakes that records each `run()` into the shared order. */
+function syncFake(order: string[]): SyncSite {
+	const settings: SettingsPort = { readSiteConfig: async () => ({ includes: [] }) };
+	const bases: BasesPort = { harvest: vi.fn() };
+	const writer: SnapshotWriterPort = { commit: vi.fn(async () => {}) };
+	const sync = new SyncSite(settings, bases, writer, corePluginsFake());
+	vi.spyOn(sync, 'run').mockImplementation(async () => {
+		order.push('sync');
+		return { written: 0, warnings: [] };
+	});
+	return sync;
+}
+
+/** Wire a `PreviewSite` over fakes, recording the call order across ports. */
+function buildPreview(overrides: { core?: CorePluginsPort; astro?: AstroProcessPort } = {}): {
+	preview: PreviewSite;
+	order: string[];
+} {
+	const order: string[] = [];
+	const bootstrap: ProjectBootstrapPort = {
+		ensureProject: vi.fn(async () => {
+			order.push('ensureProject');
+			return { projectDir: '/p' };
+		}),
+	};
+	const astro: AstroProcessPort = overrides.astro ?? {
+		startDev: vi.fn(async () => {
+			order.push('startDev');
+			return { url: 'http://localhost:4321' };
+		}),
+		build: vi.fn(),
+		stop: vi.fn(),
+	};
+	const webViewer: WebViewerPort = {
+		open: vi.fn(async () => {
+			order.push('open');
+		}),
+	};
+	const preview = new PreviewSite(
+		bootstrap,
+		overrides.core ?? corePluginsFake(),
+		syncFake(order),
+		astro,
+		webViewer,
+	);
+	return { preview, order };
+}
+
 describe('PreviewSite', () => {
+	it('runs ensureProject → sync → startDev → open in order on the first preview', async () => {
+		const { preview, order } = buildPreview();
+
+		const result = await preview.run();
+
+		expect(order).toEqual(['ensureProject', 'sync', 'startDev', 'open']);
+		expect(result.url).toBe('http://localhost:4321');
+	});
+
+	it('auto-syncs on the first preview but not on the second (per session)', async () => {
+		const { preview, order } = buildPreview();
+
+		await preview.run();
+		await preview.run();
+
+		// Two previews, but only ONE sync (auto-sync latches after the first).
+		expect(order.filter((step) => step === 'sync')).toHaveLength(1);
+		expect(order.filter((step) => step === 'startDev')).toHaveLength(2);
+		expect(order.filter((step) => step === 'open')).toHaveLength(2);
+	});
+
 	it('opens the Web Viewer at the URL the dev server reports', async () => {
-		const astro = astroFake('http://localhost:5000');
-		const open = vi.fn(async () => {});
-		const webViewer: WebViewerPort = { open };
+		const { preview } = buildPreview({
+			astro: {
+				startDev: vi.fn(async () => ({ url: 'http://localhost:5000' })),
+				build: vi.fn(),
+				stop: vi.fn(),
+			},
+		});
 
-		const result = await new PreviewSite(astro, webViewer).run();
-
-		expect(open).toHaveBeenCalledWith('http://localhost:5000');
+		const result = await preview.run();
 		expect(result.url).toBe('http://localhost:5000');
 	});
 
-	it('starts the dev server before opening the preview', async () => {
-		const order: string[] = [];
-		const astro: AstroProcessPort = {
-			startDev: vi.fn(async () => {
-				order.push('startDev');
-				return { url: 'http://localhost:4321' };
-			}),
-			build: vi.fn(),
-			stop: vi.fn(),
-		};
-		const webViewer: WebViewerPort = {
-			open: vi.fn(async () => {
-				order.push('open');
-			}),
-		};
+	it('refuses with a clear error when the Web Viewer plugin is disabled (FR-10)', async () => {
+		const disabled = buildPreview({ core: corePluginsFake({ webViewer: false }) });
+		await expect(disabled.preview.run()).rejects.toBeInstanceOf(UserFacingError);
+		expect(disabled.order).toEqual([]);
 
-		await new PreviewSite(astro, webViewer).run();
+		const again = buildPreview({ core: corePluginsFake({ webViewer: false }) });
+		await expect(again.preview.run()).rejects.toThrow(/Web Viewer core plugin is disabled/);
+	});
 
-		expect(order).toEqual(['startDev', 'open']);
+	it('refuses when Bases is disabled (preview needs it for the auto-sync harvest)', async () => {
+		const { preview, order } = buildPreview({ core: corePluginsFake({ bases: false }) });
+
+		await expect(preview.run()).rejects.toThrow(/Bases core plugin is disabled/);
+		expect(order).toEqual([]);
 	});
 
 	it('propagates a dev-server failure without opening the preview', async () => {
-		const astro: AstroProcessPort = {
-			startDev: vi.fn(async () => {
-				throw new Error('port in use');
-			}),
-			build: vi.fn(),
-			stop: vi.fn(),
-		};
-		const open = vi.fn(async () => {});
-		const webViewer: WebViewerPort = { open };
+		const { preview, order } = buildPreview({
+			astro: {
+				startDev: vi.fn(async () => {
+					throw new Error('port in use');
+				}),
+				build: vi.fn(),
+				stop: vi.fn(),
+			},
+		});
 
-		await expect(new PreviewSite(astro, webViewer).run()).rejects.toThrow('port in use');
-		expect(open).not.toHaveBeenCalled();
+		await expect(preview.run()).rejects.toThrow('port in use');
+		expect(order).not.toContain('open');
 	});
 });
