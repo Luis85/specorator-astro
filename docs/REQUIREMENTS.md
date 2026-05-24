@@ -43,11 +43,11 @@
   same snapshots.
 - **FR-7** — Re-sync snapshots when Base data changes and trigger a dev-server
   live reload (Content Layer loader `watcher`).
-- **FR-8** — Expose commands and a settings tab covering at least: the
-  **site-config note** path and the `Site/` layout (default `Site/components`
-  (FR-11f), `Site/pages` (FR-12), `Site/site.md` (FR-19) — all configurable, D19),
-  dev-server port (default 4321, auto-fallback), Node/binary path override, and
-  build output / export location.
+- **FR-8** — Expose commands and a **settings tab** that is the source of truth
+  for the site config (FR-19) and also covers at least: the `Site/` authoring
+  layout (default `Site/components` (FR-11f), `Site/pages` (FR-12) — all
+  configurable, D19), dev-server port (default 4321, auto-fallback), Node/binary
+  path override, and build output / export location.
 - **FR-9** — Scaffold and bootstrap the bundled Astro template into the plugin
   data folder on first run (including dependency install), surfacing build/
   install errors in a visible output channel.
@@ -134,12 +134,13 @@
   execute at build time. The plugin MUST NOT claim a sandbox and MUST NOT spawn
   content-derived commands (`DESIGN.md §5.10`).
 
-- **FR-19 (Site config note)** — A single **vault-resident, plugin-managed,
-  hand-editable config note** (`Site/site.md`) is the source of truth for: the
-  curated **inclusion list** of base files, the **per-(base,view) selection** and
-  **routes**, component/layout **bindings**, **navigation**, and the **site URL**.
-  The plugin re-reads it on change (no fighting manual edits) and it is
-  schema-versioned (NFR-8). (D1/D3/D4/D14/D16)
+- **FR-19 (Site config in native settings)** — The plugin's **native settings**
+  (edited via the settings tab, persisted through Obsidian's data API) are the
+  single source of truth for: the curated **inclusion list** of base files, the
+  **per-(base,view) selection** and **routes**, component/layout **bindings**,
+  **navigation**, and the **site URL**. The settings are schema-versioned with
+  forward migration (NFR-8). _Supersedes the earlier vault config note
+  (`Site/site.md`)._ (D1/D3/D4/D14/D16)
 - **FR-20 (Sync trigger)** — Provide a manual _Sync site_ command; auto-sync on
   first preview; and an optional, **debounced live-resync of only the
   actively-previewed base** (toggle to disable). (D2)
@@ -148,7 +149,7 @@
 - **FR-22 (Build output & export)** — `astro build` outputs to `dist/` in the
   plugin data folder; an **Export/Reveal build** action copies it to a chosen
   location; deploy is manual to any static host. (D6)
-- **FR-23 (Site URL / SEO)** — A `site` URL in the config note: optional for
+- **FR-23 (Site URL / SEO)** — A `site` URL in the plugin settings: optional for
   dev/preview (localhost origin), **required at build** to emit `sitemap.xml` +
   canonical/OpenGraph; warn-don't-fail if absent. (D16)
 - **FR-24 (Unpublished links)** — Wikilinks to notes **not** on the site render
@@ -213,8 +214,8 @@
       model (`BaseSnapshot`, `ViewSpec`, `SiteSpec`, route/nav resolution), the
       transforms (markdown→`.astro` transpiler, mapping), the use-cases
       (`HarvestBases`, `SyncSnapshots`, `BuildSite`, …), and the **ports**
-      (interfaces): `BasesPort`, `VaultPort`, `SnapshotWriterPort`,
-      `AstroProcessPort`, `WebViewerPort`, `SettingsPort`. (Organize domain vs
+      (interfaces): `BasesPort`, `SettingsPort`, `SnapshotWriterPort`,
+      `AstroProcessPort`, `WebViewerPort`. (Organize domain vs
       use-cases as subfolders if helpful — but do **not** over-abstract; this
       plugin has almost no business-rule domain.)
     - `adapters/` — implement the ports; the **only** place (besides `main.ts`)

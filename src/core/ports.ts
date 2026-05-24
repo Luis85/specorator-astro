@@ -1,7 +1,7 @@
 import type { ResolvedTarget, SiteConfig, ViewSnapshot } from './domain/types';
 
-/** Reads the user's site configuration (the vault config note). */
-export interface VaultPort {
+/** Provides the user's site configuration (managed in the plugin's settings). */
+export interface SettingsPort {
 	readSiteConfig(): Promise<SiteConfig>;
 }
 

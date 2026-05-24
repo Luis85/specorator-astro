@@ -56,8 +56,9 @@ A later release will be submitted to the official Community Plugins directory.
 
 1. **Choose what goes on your site.** Right-click a `.base` file →
    **"Add to site"**, then pick which view(s) to publish (cards, table, or
-   both). Your selections live in a normal note in your vault
-   (`Site/site.md`), so they sync and version like everything else.
+   both). Your selections live in the plugin's **Settings** tab (Settings →
+   Specorator Astro Viewer), where you can also reorder, re-route, or remove
+   them.
 2. **Preview live.** Run **"Preview site"** — a tab opens inside Obsidian
    showing your real website. Edit a note in another pane and watch it refresh.
 3. **Style it.** A polished default theme ships out of the box; recolor and

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SyncSite } from '../../src/core/usecases/sync-site';
-import type { BasesPort, Logger, SnapshotWriterPort, VaultPort } from '../../src/core/ports';
+import type { BasesPort, Logger, SettingsPort, SnapshotWriterPort } from '../../src/core/ports';
 import type { ResolvedTarget, SiteConfig, ViewSnapshot } from '../../src/core/domain/types';
 
 function snapshotFor(target: ResolvedTarget): ViewSnapshot {
@@ -25,7 +25,7 @@ describe('SyncSite', () => {
 		const written: ViewSnapshot[] = [];
 		const clear = vi.fn(async () => {});
 		const harvest = vi.fn(async (t: ResolvedTarget) => snapshotFor(t));
-		const vault: VaultPort = { readSiteConfig: async () => config };
+		const settings: SettingsPort = { readSiteConfig: async () => config };
 		const bases: BasesPort = { harvest };
 		const writer: SnapshotWriterPort = {
 			write: async (snapshot) => {
@@ -35,7 +35,7 @@ describe('SyncSite', () => {
 		};
 		const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
-		const result = await new SyncSite(vault, bases, writer, logger).run();
+		const result = await new SyncSite(settings, bases, writer, logger).run();
 
 		expect(clear).toHaveBeenCalledOnce();
 		expect(harvest).toHaveBeenCalledTimes(2);
@@ -48,12 +48,12 @@ describe('SyncSite', () => {
 
 	it('forwards plan warnings to the logger and writes nothing', async () => {
 		const warn = vi.fn();
-		const vault: VaultPort = { readSiteConfig: async () => ({ includes: [] }) };
+		const settings: SettingsPort = { readSiteConfig: async () => ({ includes: [] }) };
 		const bases: BasesPort = { harvest: vi.fn() };
 		const writer: SnapshotWriterPort = { write: vi.fn(), clear: vi.fn() };
 		const logger: Logger = { info: vi.fn(), warn, error: vi.fn() };
 
-		const result = await new SyncSite(vault, bases, writer, logger).run();
+		const result = await new SyncSite(settings, bases, writer, logger).run();
 
 		expect(result.written).toBe(0);
 		expect(warn).toHaveBeenCalledOnce();

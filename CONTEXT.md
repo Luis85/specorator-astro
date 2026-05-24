@@ -15,8 +15,9 @@ comments, and discussion.
 - **Transient leaf** — a briefly-opened, auto-closed tab used to mount a base
   and harvest it.
 - **Inclusion list** — the user-curated set of `(base, view)` targets to publish.
-- **Site config note** — `Site/site.md`, the single vault-resident source of
-  truth: inclusion list, per-view selection, routes, component/layout bindings,
+- **Site config** — the single source of truth, managed in the plugin's
+  **native settings** (settings tab) and persisted via Obsidian's data API:
+  inclusion list, per-view selection, routes, component/layout bindings,
   navigation, and the site URL.
 - **Snapshot** — the JSON the harvester writes for one `(base, view)`, consumed
   by the Astro project.

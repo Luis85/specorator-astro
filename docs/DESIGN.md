@@ -136,19 +136,19 @@ pure and testable and every Obsidian / Node touchpoint sits behind an interface.
                 │                  application/                      │
                 │  use-cases: HarvestBases, SyncSnapshots,           │
                 │  RunDevServer, BuildSite, OpenPreview              │
-                │  ports (interfaces): BasesPort, VaultPort,         │
+                │  ports (interfaces): BasesPort, SettingsPort,      │
                 │  SnapshotWriterPort, AstroProcessPort,             │
-                │  WebViewerPort, SettingsPort                       │
+                │  WebViewerPort                                     │
                 └────────────┬───────────────────────┬───────────────┘
                   depends on │                       │ implemented by
                 ┌────────────▼───────────┐  ┌─────────▼──────────────────────┐
                 │        domain/          │  │        infrastructure/          │
                 │ pure entities & VOs:    │  │ adapters (import obsidian/node):│
-                │ BaseSnapshot, ViewSpec, │  │ ObsidianVaultAdapter,           │
+                │ BaseSnapshot, ViewSpec, │  │ SettingsStore, SiteSettingTab,  │
                 │ EntryRow, PropertyId,   │  │ BasesHarvesterAdapter,          │
                 │ SiteSpec, PageRoute     │  │ AstroProcessAdapter,            │
                 │ (no obsidian/fs/node)   │  │ WebViewerAdapter,               │
-                └─────────────────────────┘  │ FsSnapshotWriter, DataSettings  │
+                └─────────────────────────┘  │ FsSnapshotWriter                │
                                              └─────────────────────────────────┘
 ```
 
@@ -216,10 +216,10 @@ time** once snapshots exist.
 
 ### 5.1 Harvester (BasesPort → BasesHarvesterAdapter)
 
-**Driven by the site config note.** Harvesting is scoped to a **user-curated
-inclusion list** (D1/D4) held in the vault config note (`Site/site.md`): a set of
-base files, each with the **view(s)** the user chose to publish (D3) and their
-routes. The harvester iterates only this list — not the whole vault.
+**Driven by the plugin settings.** Harvesting is scoped to a **user-curated
+inclusion list** (D1/D4) held in the plugin's native settings (`SettingsPort`):
+a set of base files, each with the **view(s)** the user chose to publish (D3)
+and their routes. The harvester iterates only this list — not the whole vault.
 
 **Trigger (D2).** A manual _Sync site_ command is the baseline; the plugin also
 auto-syncs on first preview and offers an optional, **debounced live-resync of
@@ -430,9 +430,9 @@ itself — `table`/`cards`/`list`), overridable per base/view (below). Layouts
 resolve the same way.
 
 **Assignment (which layout/component renders a given base/view).** Stored in the
-**vault site-config note** (D4 — not a data-folder sidecar and not in the `.base`
+**plugin settings** (D4 — not a data-folder sidecar and not in the `.base`
 file, whose editor may drop unknown keys), keyed by `{ basePath | codeblock-id,
-viewName }` → `{ component, layout, route }`. The config note is the single
+viewName }` → `{ component, layout, route }`. The settings are the single
 source of truth for the inclusion list, per-view selection, routes, bindings,
 navigation, and the `site` URL; the snapshot writer copies the resolved binding
 into each snapshot so Astro renders deterministically.
@@ -475,7 +475,7 @@ resolver), not at render time. Newly _designating_ a note as a page is fine for
 `astro build` but, like new components, needs a dev-server restart to appear.
 
 **Navigation (D14).** The **primary, authoritative** source is an ordered,
-nestable nav list **curated in the site-config note** (`Site/site.md`), with an
+nestable nav list **curated in the plugin settings**, with an
 _add to nav_ helper when a base/page is included. Page frontmatter hints
 (`nav: { title, order, group }`) and folder structure are offered only as
 optional auto-suggestions, never the primary source (inferred nav is brittle).
@@ -493,9 +493,9 @@ shipped Astro-6 peer ranges that npm rejects — the bootstrap (§5.9) may need
 An in-site human-readable "site map" page can also be generated from the route
 table.
 
-**Harvest additions & markdown body.** Beyond `BasesHarvesterAdapter`, the
-`VaultPort` adapter reads designated page notes into `PageNode`s and resolves the
-`NavigationTree`. For **page bodies**, prefer pointing a `glob()` loader at the
+**Harvest additions & markdown body.** Beyond `BasesHarvesterAdapter`, a
+dedicated page-loader adapter (phase 2) reads designated page notes into
+`PageNode`s; the `NavigationTree` is resolved from the settings-defined nav list. For **page bodies**, prefer pointing a `glob()` loader at the
 `.md` files (native, simplest) over embedding markdown in snapshots; reserve
 snapshot-embedded `body` for where Bases-resolved values are needed. Obsidian-
 flavored markdown is only partially portable: `astro-loader-obsidian` resolves
@@ -651,7 +651,7 @@ consumed by the same Astro Content Layer loaders (§5.7).
   `viewType` programmatically and `onDataUpdated` fires; (b) confirm Vite's HMR
   websocket works inside the Web Viewer; (c) spawn the project-local `astro`
   binary, parse its URL, and kill the process tree cleanly. Go/no-go gate.
-- **Phase 1 — MVP:** curated inclusion list + vault config note → one `.base` →
+- **Phase 1 — MVP:** curated inclusion list in native settings → one `.base` →
   **table + cards** collection **plus per-entry detail pages** (core-fidelity
   bodies + the **asset pipeline**, §5.8) → JSON snapshots → bundled **safe**
   Astro template (Zod-validated, no author code, one token theme) → transient
@@ -700,11 +700,14 @@ conflict; full integration into the sections above is pending):
 - **D3 — View granularity.** List is base **files**; per base the user picks
   which view(s) to publish (default = the base's default view); each selected
   `(base, view)` → its own route.
-- **D4 — Vault config note.** Site configuration (inclusion list, per-view
-  selection, routes, component/layout bindings) lives in a **vault-resident,
-  plugin-managed, hand-editable config note** (absorbs the earlier
-  `view-bindings.json`/`navigation.json` sidecars); plugin re-reads on change.
-- **D5 — Single site (v1).** One config note → one Astro project → one
+- **D4 — Native settings (revised).** Site configuration (inclusion list,
+  per-view selection, routes, component/layout bindings, navigation, site URL)
+  lives in the plugin's **native settings**, edited via the settings tab and
+  persisted through Obsidian's data API (`loadData`/`saveData`). _Supersedes the
+  earlier vault config note (`Site/site.md`), which in turn absorbed the
+  `view-bindings.json`/`navigation.json` sidecars._ Config is schema-versioned
+  with forward migration (NFR-8).
+- **D5 — Single site (v1).** One settings document → one Astro project → one
   preview/build; architecture leaves room for multiple sites later.
 - **D6 — Build output.** `astro build` → `dist/` in the plugin data folder +
   an **"Export/Reveal build"** action; manual deploy to any host; deploy
@@ -731,14 +734,14 @@ conflict; full integration into the sections above is pending):
   (`eslint-plugin-boundaries`). Confirms the §4 architecture.
 - **D13 — MIT license.**
 - **D14 — Explicit navigation.** Nav is an ordered, nestable list curated in the
-  vault config note (single source of truth) with an "add to nav" helper;
+  plugin settings (single source of truth) with an "add to nav" helper;
   frontmatter/folder structure only as optional suggestions.
 
 - **D15 — Distribution.** BRAT beta first; submit to the community marketplace
   after the risky surfaces harden (matches Phase 4).
-- **D16 — Site URL.** A `site` URL in the config note; optional for dev/preview
-  (localhost origin), required at `astro build` to emit `sitemap.xml` +
-  canonical/OG (warn-don't-fail if missing).
+- **D16 — Site URL.** A `site` URL in the plugin settings; optional for
+  dev/preview (localhost origin), required at `astro build` to emit `sitemap.xml`
+    - canonical/OG (warn-don't-fail if missing).
 - **D17 — Unpublished links.** Wikilinks to notes not on the site render as plain
   text (styled "not published") + a build-warning list; targets are **never
   auto-included** (privacy-safe, self-contained).
@@ -746,15 +749,16 @@ conflict; full integration into the sections above is pending):
 - **D19 — Ratified defaults.** Plugin `id: specorator-astro-viewer`, name
   **"Specorator Astro Viewer"** ("Specorator" alone is reserved for a separate
   plugin); package manager **npm**; dev port **4321** (auto-fallback if busy, configurable);
-  default vault layout under **`Site/`** (`Site/components`, `Site/pages`,
-  `Site/site.md` config note), all configurable; **`AGENTS.md` canonical** with
+  default vault layout under **`Site/`** (`Site/components`, `Site/pages`) for
+  authoring, all configurable (site config now lives in **native settings**, D4);
+  **`AGENTS.md` canonical** with
   `CLAUDE.md` symlinked; **Conventional Commits** + commitlint + release-please +
   Dependabot; required CI checks = typecheck, lint, format:check, test:coverage,
   build; config/settings schema **versioned with forward migration**.
 
 **Revised MVP (per D7):** one base → **table + cards** collection **plus
-per-entry detail pages** (core-fidelity bodies + assets) → curated list + vault
-config note → transient harvest (hybrid trigger) → safe default theme → live
+per-entry detail pages** (core-fidelity bodies + assets) → curated list in
+native settings → transient harvest (hybrid trigger) → safe default theme → live
 preview in Web Viewer → `astro build` to `dist/` + export.
 
 ## 12. Sources

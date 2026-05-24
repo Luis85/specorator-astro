@@ -1,5 +1,5 @@
 import { planSync } from '../domain/routing';
-import type { BasesPort, Logger, SnapshotWriterPort, VaultPort } from '../ports';
+import type { BasesPort, Logger, SettingsPort, SnapshotWriterPort } from '../ports';
 
 export interface SyncResult {
 	written: number;
@@ -7,21 +7,21 @@ export interface SyncResult {
 }
 
 /**
- * Orchestrates a full site sync: read the config note, plan routes, then
+ * Orchestrates a full site sync: read the site config, plan routes, then
  * harvest + write a snapshot per target. The orchestration logic lives here
  * (locality); all I/O is delegated to ports, so this is unit-testable with
  * in-memory fakes and no Obsidian.
  */
 export class SyncSite {
 	constructor(
-		private readonly vault: VaultPort,
+		private readonly settings: SettingsPort,
 		private readonly bases: BasesPort,
 		private readonly writer: SnapshotWriterPort,
 		private readonly logger: Logger,
 	) {}
 
 	async run(): Promise<SyncResult> {
-		const config = await this.vault.readSiteConfig();
+		const config = await this.settings.readSiteConfig();
 		const plan = planSync(config);
 		for (const warning of plan.warnings) {
 			this.logger.warn(warning);

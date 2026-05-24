@@ -4,10 +4,9 @@ import { SyncSite } from './core/usecases/sync-site';
 import { AstroProcessAdapter } from './adapters/astro-process-adapter';
 import { BasesHarvesterAdapter } from './adapters/bases-harvester-adapter';
 import { FsSnapshotWriter } from './adapters/fs-snapshot-writer';
-import { ObsidianVaultAdapter } from './adapters/obsidian-vault-adapter';
+import { SettingsStore } from './adapters/settings-store';
+import { SiteSettingTab } from './adapters/settings-tab';
 import { WebViewerAdapter } from './adapters/web-viewer-adapter';
-
-const CONFIG_NOTE = 'Site/site.md';
 
 /**
  * Composition root. Wires adapters (Obsidian/Node) into the pure core use-cases
@@ -24,14 +23,17 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		};
 
 		const projectDir = `${this.manifest.dir ?? ''}/astro`;
-		const vault = new ObsidianVaultAdapter(this.app, CONFIG_NOTE);
+		const settings = new SettingsStore(this);
+		await settings.load();
+		this.addSettingTab(new SiteSettingTab(this.app, this, settings));
+
 		const bases = new BasesHarvesterAdapter();
 		const writer = new FsSnapshotWriter(projectDir);
 		const webViewer = new WebViewerAdapter(this.app);
 		const astro = new AstroProcessAdapter(projectDir);
 		this.astro = astro;
 
-		const sync = new SyncSite(vault, bases, writer, logger);
+		const sync = new SyncSite(settings, bases, writer, logger);
 
 		this.addCommand({
 			id: 'sync-site',
