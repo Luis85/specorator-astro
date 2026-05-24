@@ -9,8 +9,9 @@ A desktop Obsidian plugin that renders the user's **Bases** as a live,
 publishable **Astro** website, previewed inside Obsidian's Web Viewer. The full
 design and normative requirements live in
 [`docs/DESIGN.md`](docs/DESIGN.md) and [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md);
-domain and architecture vocabulary is in [`CONTEXT.md`](CONTEXT.md). Read those
-before non-trivial changes.
+the chunked, agent-executable build sequence is in
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md); domain and architecture
+vocabulary is in [`CONTEXT.md`](CONTEXT.md). Read those before non-trivial changes.
 
 ## Architecture (enforced — see REQUIREMENTS.md ARCH-1/2)
 
