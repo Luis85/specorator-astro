@@ -5,14 +5,11 @@ import type { SnapshotWriterPort } from '../core/ports';
 export class FsSnapshotWriter implements SnapshotWriterPort {
 	constructor(private readonly dataDir: string) {}
 
-	async write(snapshot: ViewSnapshot): Promise<void> {
+	async commit(snapshots: ViewSnapshot[]): Promise<void> {
+		// Phase 1 will stage to a temp dir and swap atomically so a failed sync
+		// never leaves the data directory half-written.
 		throw new Error(
-			`Snapshot writing is not implemented yet (${snapshot.baseId} -> ${this.dataDir}).`,
+			`Snapshot writing is not implemented yet (${String(snapshots.length)} snapshot(s) -> ${this.dataDir}).`,
 		);
-	}
-
-	async clear(): Promise<void> {
-		// No-op until the writer is implemented (phase 1).
-		return;
 	}
 }

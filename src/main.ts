@@ -1,5 +1,6 @@
 import { Notice, Plugin } from 'obsidian';
-import type { AstroProcessPort, Logger } from './core/ports';
+import type { AstroProcessPort } from './core/ports';
+import { PreviewSite } from './core/usecases/preview-site';
 import { SyncSite } from './core/usecases/sync-site';
 import { AstroProcessAdapter } from './adapters/astro-process-adapter';
 import { BasesHarvesterAdapter } from './adapters/bases-harvester-adapter';
@@ -9,19 +10,14 @@ import { SiteSettingTab } from './adapters/settings-tab';
 import { WebViewerAdapter } from './adapters/web-viewer-adapter';
 
 /**
- * Composition root. Wires adapters (Obsidian/Node) into the pure core use-cases
- * and registers commands. No domain logic lives here.
+ * Composition root. Wires adapters (Obsidian/Node) into the pure core use-cases,
+ * registers commands, and surfaces use-case results to the user. No domain
+ * logic lives here.
  */
 export default class SpecoratorAstroViewerPlugin extends Plugin {
 	private astro: AstroProcessPort | null = null;
 
 	override async onload(): Promise<void> {
-		const logger: Logger = {
-			info: (message) => console.debug(`[specorator] ${message}`),
-			warn: (message) => console.warn(`[specorator] ${message}`),
-			error: (message, error) => console.error(`[specorator] ${message}`, error),
-		};
-
 		const projectDir = `${this.manifest.dir ?? ''}/astro`;
 		const settings = new SettingsStore(this);
 		await settings.load();
@@ -33,7 +29,8 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		const astro = new AstroProcessAdapter(projectDir);
 		this.astro = astro;
 
-		const sync = new SyncSite(settings, bases, writer, logger);
+		const sync = new SyncSite(settings, bases, writer);
+		const preview = new PreviewSite(astro, webViewer);
 
 		this.addCommand({
 			id: 'sync-site',
@@ -41,10 +38,13 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 			callback: async () => {
 				try {
 					const result = await sync.run();
-					new Notice(`Specorator: synced ${result.written} view(s).`);
+					for (const warning of result.warnings) {
+						console.warn(`[specorator] ${warning}`);
+					}
+					new Notice(`Specorator: synced ${String(result.written)} view(s).`);
 				} catch (error) {
 					new Notice('Specorator: sync failed — see console.');
-					logger.error('Sync failed', error);
+					console.error('[specorator] Sync failed', error);
 				}
 			},
 		});
@@ -54,11 +54,10 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 			name: 'Preview site',
 			callback: async () => {
 				try {
-					const { url } = await astro.startDev();
-					await webViewer.open(url);
+					await preview.run();
 				} catch (error) {
 					new Notice('Specorator: preview failed — see console.');
-					logger.error('Preview failed', error);
+					console.error('[specorator] Preview failed', error);
 				}
 			},
 		});

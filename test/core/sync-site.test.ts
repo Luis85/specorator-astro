@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SyncSite } from '../../src/core/usecases/sync-site';
-import type { BasesPort, Logger, SettingsPort, SnapshotWriterPort } from '../../src/core/ports';
+import type { BasesPort, SettingsPort, SnapshotWriterPort } from '../../src/core/ports';
 import type { ResolvedTarget, SiteConfig, ViewSnapshot } from '../../src/core/domain/types';
 
 function snapshotFor(target: ResolvedTarget): ViewSnapshot {
@@ -15,47 +15,45 @@ function snapshotFor(target: ResolvedTarget): ViewSnapshot {
 }
 
 describe('SyncSite', () => {
-	it('clears, then harvests and writes one snapshot per planned target', async () => {
+	it('harvests every planned target and commits them as one set', async () => {
 		const config: SiteConfig = {
 			includes: [
 				{ basePath: 'Books/books.base', viewName: 'Cards' },
 				{ basePath: 'Projects/projects.base', viewName: 'Table' },
 			],
 		};
-		const written: ViewSnapshot[] = [];
-		const clear = vi.fn(async () => {});
+		const committed: ViewSnapshot[][] = [];
 		const harvest = vi.fn(async (t: ResolvedTarget) => snapshotFor(t));
 		const settings: SettingsPort = { readSiteConfig: async () => config };
 		const bases: BasesPort = { harvest };
 		const writer: SnapshotWriterPort = {
-			write: async (snapshot) => {
-				written.push(snapshot);
+			commit: async (snapshots) => {
+				committed.push(snapshots);
 			},
-			clear,
 		};
-		const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
-		const result = await new SyncSite(settings, bases, writer, logger).run();
+		const result = await new SyncSite(settings, bases, writer).run();
 
-		expect(clear).toHaveBeenCalledOnce();
 		expect(harvest).toHaveBeenCalledTimes(2);
-		expect(result.written).toBe(2);
-		expect(written.map((s) => s.baseId)).toEqual([
+		expect(committed).toHaveLength(1);
+		expect(committed[0].map((s) => s.baseId)).toEqual([
 			'Books/books.base',
 			'Projects/projects.base',
 		]);
+		expect(result.written).toBe(2);
+		expect(result.warnings).toHaveLength(0);
 	});
 
-	it('forwards plan warnings to the logger and writes nothing', async () => {
-		const warn = vi.fn();
+	it('returns plan warnings and commits an empty set when nothing is published', async () => {
+		const commit = vi.fn(async () => {});
 		const settings: SettingsPort = { readSiteConfig: async () => ({ includes: [] }) };
 		const bases: BasesPort = { harvest: vi.fn() };
-		const writer: SnapshotWriterPort = { write: vi.fn(), clear: vi.fn() };
-		const logger: Logger = { info: vi.fn(), warn, error: vi.fn() };
+		const writer: SnapshotWriterPort = { commit };
 
-		const result = await new SyncSite(settings, bases, writer, logger).run();
+		const result = await new SyncSite(settings, bases, writer).run();
 
+		expect(commit).toHaveBeenCalledWith([]);
 		expect(result.written).toBe(0);
-		expect(warn).toHaveBeenCalledOnce();
+		expect(result.warnings).toHaveLength(1);
 	});
 });

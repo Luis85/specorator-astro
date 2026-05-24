@@ -12,8 +12,8 @@ export interface BasesPort {
 
 /** Persists snapshots into the Astro project's data directory. */
 export interface SnapshotWriterPort {
-	write(snapshot: ViewSnapshot): Promise<void>;
-	clear(): Promise<void>;
+	/** Atomically replace all persisted snapshots with exactly this set. */
+	commit(snapshots: ViewSnapshot[]): Promise<void>;
 }
 
 /** Runs the Astro toolchain (dev server / build) out-of-process. */
@@ -26,11 +26,4 @@ export interface AstroProcessPort {
 /** Opens a URL in Obsidian's Web Viewer. */
 export interface WebViewerPort {
 	open(url: string): Promise<void>;
-}
-
-/** Minimal logging seam so the core never reaches for `console` directly. */
-export interface Logger {
-	info(message: string): void;
-	warn(message: string): void;
-	error(message: string, error?: unknown): void;
 }
