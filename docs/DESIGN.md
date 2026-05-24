@@ -261,10 +261,13 @@ intrusive_, not _whether headless works_.
 
 ### 5.2 Snapshot writer (SnapshotWriterPort → FsSnapshotWriter)
 
-Serializes each `BaseSnapshot` to JSON in the Astro project's data directory.
-Uses `normalizePath` for any vault-relative paths and writes via Node `fs` to
-the plugin data folder (outside the indexed vault tree, so Obsidian does not
-index `node_modules`).
+Serializes the harvested `BaseSnapshot`s to JSON in the Astro project's data
+directory. The port exposes a single `commit(snapshots)` call that **atomically
+replaces** the whole set (stage to a temp dir, swap on success) so a sync that
+fails partway never leaves a half-written data directory; sequencing is owned by
+the writer, not the caller. Uses `normalizePath` for any vault-relative paths
+and writes via Node `fs` to the plugin data folder (outside the indexed vault
+tree, so Obsidian does not index `node_modules`).
 
 ### 5.3 Astro process manager (AstroProcessPort → AstroProcessAdapter)
 

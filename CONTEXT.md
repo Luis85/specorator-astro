@@ -21,6 +21,11 @@ comments, and discussion.
   navigation, and the site URL.
 - **Snapshot** — the JSON the harvester writes for one `(base, view)`, consumed
   by the Astro project.
+- **Sync** — harvesting every included target and **atomically committing** the
+  resulting snapshots as one set (the `SyncSite` use-case); the writer owns the
+  clear+write so a partial failure never leaves a half-written site.
+- **Preview** — starting the Astro dev server and opening it in the Web Viewer
+  (the `PreviewSite` use-case).
 - **Publish target** — one `(base, view)` to publish; **resolved target** adds a
   concrete route + component/layout after planning.
 - **Component note** — an Obsidian note authoring an Astro component as an
