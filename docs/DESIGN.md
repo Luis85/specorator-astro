@@ -730,8 +730,9 @@ conflict; full integration into the sections above is pending):
   text (styled "not published") + a build-warning list; targets are **never
   auto-included** (privacy-safe, self-contained).
 
-- **D19 — Ratified defaults.** Plugin `id: specorator-astro`, name "Specorator";
-  package manager **npm**; dev port **4321** (auto-fallback if busy, configurable);
+- **D19 — Ratified defaults.** Plugin `id: specorator-astro-viewer`, name
+  **"Specorator Astro Viewer"** ("Specorator" alone is reserved for a separate
+  plugin); package manager **npm**; dev port **4321** (auto-fallback if busy, configurable);
   default vault layout under **`Site/`** (`Site/components`, `Site/pages`,
   `Site/site.md` config note), all configurable; **`AGENTS.md` canonical** with
   `CLAUDE.md` symlinked; **Conventional Commits** + commitlint + release-please +

@@ -271,7 +271,8 @@
   (semver `x.y.z`, no leading `v`).
 - **DIST-MP-3** — `id` and `name` MUST NOT contain "Obsidian" (or "Obsi-"/
   "-sidian"), MUST be Basic Latin, no emoji, and MUST NOT duplicate core names.
-  Chosen (D19): `id: specorator-astro`, `name: "Specorator"`.
+  Chosen (D19): `id: specorator-astro-viewer`, `name: "Specorator Astro Viewer"`
+  ("Specorator" alone is reserved for a separate plugin).
 - **DIST-MP-4** — `manifest.json` MUST set `isDesktopOnly: true`.
 - **DIST-MP-5** — Maintain a root `versions.json` mapping plugin version →
   required `minAppVersion`.
