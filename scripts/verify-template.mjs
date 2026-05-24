@@ -135,10 +135,23 @@ async function assertSnapshotRoutes(dist) {
 	assertIncludes(filmsHtml, '>Stalker</h3>', '/films card title');
 	assertIncludes(filmsHtml, '>Solaris</h3>', '/films card title');
 	// Field labels humanized from view.order (director/year), in order. file.name
-	// is the card title and is excluded from the field list.
+	// is the card title; note.cover is the card cover image — both excluded from
+	// the field list. The cover label must NOT appear as a field <dt>.
 	assertIncludes(filmsHtml, '>Director</dt>', '/films field label');
 	assertIncludes(filmsHtml, '>Year</dt>', '/films field label');
 	assertOrder(filmsHtml, '>Director</dt>', '>Year</dt>', '/films field order');
+	if (filmsHtml.includes('>Cover</dt>')) {
+		throw new Error('/films: the image-typed cover must render as <img>, not a text field.');
+	}
+
+	// C7 asset pipeline: the image-typed `note.cover` renders as a card cover
+	// <img>, pointing at the rewritten public URL. The resolved cover and the
+	// missing-asset placeholder both appear (graceful degradation, FR-16).
+	if (countOccurrences(filmsHtml, 'class="sp-card-cover"') !== 2) {
+		throw new Error('/films: expected one card-cover <img> per entry (FR-16).');
+	}
+	assertIncludes(filmsHtml, 'src="/assets/stalker-cover.png"', '/films resolved cover URL');
+	assertIncludes(filmsHtml, 'src="/assets/_missing.svg"', '/films missing-asset placeholder');
 
 	// --- /tasks — list, ungrouped ---
 	const tasksHtml = await readFile(path.join(dist, 'tasks', 'index.html'), 'utf8');
@@ -202,6 +215,17 @@ async function main() {
 		// dir (test/fixtures/astro-template/data/**) with correct view, column
 		// order, grouping, and one row/card/list-item per entry.
 		await assertSnapshotRoutes(dist);
+
+		// C7: the referenced attachment placed under public/assets/ (simulating the
+		// post-copy state the plugin's copier produces) is emitted into dist/, and
+		// the template's missing-asset placeholder ships too (FR-16; DESIGN §5.8).
+		for (const asset of ['assets/stalker-cover.png', 'assets/_missing.svg']) {
+			const built = path.join(dist, ...asset.split('/'));
+			if (!(await exists(built))) {
+				throw new Error(`Expected copied asset missing from build output: ${built}`);
+			}
+		}
+		console.log('[verify:template] OK — referenced assets + placeholder emitted into dist/.');
 
 		console.log('[verify:template] OK — astro check + build succeeded; static routes emitted.');
 	} finally {

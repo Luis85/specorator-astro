@@ -36,3 +36,21 @@ export function formatCell(value: CellValue): string {
 	if (typeof value === 'boolean') return value ? 'Yes' : 'No';
 	return String(value);
 }
+
+/**
+ * The single public image URL for an image-typed property value, or `null` when
+ * there is nothing to render (FR-16). The asset pipeline rewrites image-typed
+ * values to a public URL string (or a placeholder URL for a missing asset); a
+ * list value uses its first element. Non-string/empty values yield `null`.
+ */
+export function imageUrl(value: CellValue): string | null {
+	const raw = Array.isArray(value) ? (value[0] ?? null) : value;
+	if (typeof raw !== 'string') return null;
+	const trimmed = raw.trim();
+	return trimmed === '' ? null : trimmed;
+}
+
+/** Whether a property id is flagged as an image for this view (FR-16). */
+export function isImageProperty(propertyId: string, imageProperties?: string[]): boolean {
+	return imageProperties?.includes(propertyId) ?? false;
+}

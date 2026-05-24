@@ -9,7 +9,7 @@
  * own row block. Replaced on plugin upgrade — shadow with src/user/views.
  */
 import type { ViewSnapshot } from '../../content/schema';
-import { formatCell, getDisplayName } from './labels';
+import { formatCell, getDisplayName, imageUrl, isImageProperty } from './labels';
 
 interface Props {
 	snapshot: ViewSnapshot;
@@ -17,6 +17,7 @@ interface Props {
 
 const { snapshot } = Astro.props;
 const columns = snapshot.view.order;
+const imageProps = snapshot.view.imageProperties;
 const grouped = snapshot.groups.some((g) => g.key !== null);
 ---
 
@@ -40,9 +41,25 @@ const grouped = snapshot.groups.some((g) => g.key !== null);
 					<tbody>
 						{group.entries.map((entry) => (
 							<tr data-entry={entry.path}>
-								{columns.map((col) => (
-									<td data-property={col}>{formatCell(entry.values[col] ?? null)}</td>
-								))}
+								{columns.map((col) => {
+									const cellImage = isImageProperty(col, imageProps)
+										? imageUrl(entry.values[col] ?? null)
+										: null;
+									return (
+										<td data-property={col}>
+											{cellImage !== null ? (
+												<img
+													class="sp-table-image"
+													src={cellImage}
+													alt={getDisplayName(col)}
+													loading="lazy"
+												/>
+											) : (
+												formatCell(entry.values[col] ?? null)
+											)}
+										</td>
+									);
+								})}
 							</tr>
 						))}
 					</tbody>
@@ -75,5 +92,10 @@ const grouped = snapshot.groups.some((g) => g.key !== null);
 	.sp-table th {
 		color: var(--sp-color-muted);
 		font-weight: 600;
+	}
+	.sp-table-image {
+		max-height: 3rem;
+		width: auto;
+		border-radius: var(--sp-radius);
 	}
 </style>

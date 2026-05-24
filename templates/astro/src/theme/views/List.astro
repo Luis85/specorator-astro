@@ -10,14 +10,20 @@
  * src/user/views.
  */
 import type { ViewSnapshot } from '../../content/schema';
-import { formatCell, getDisplayName } from './labels';
+import { formatCell, getDisplayName, imageUrl, isImageProperty } from './labels';
 
 interface Props {
 	snapshot: ViewSnapshot;
 }
 
 const { snapshot } = Astro.props;
-const secondary = snapshot.view.order.filter((p) => p !== 'file.name');
+const imageProps = snapshot.view.imageProperties;
+// The first image-typed property renders as a leading thumbnail; the rest of
+// the (non-image) properties render in the compact secondary line.
+const thumbProp = snapshot.view.order.find((p) => isImageProperty(p, imageProps));
+const secondary = snapshot.view.order.filter(
+	(p) => p !== 'file.name' && !isImageProperty(p, imageProps),
+);
 const grouped = snapshot.groups.some((g) => g.key !== null);
 ---
 
@@ -29,25 +35,39 @@ const grouped = snapshot.groups.some((g) => g.key !== null);
 					<h2 class="sp-group-heading">{group.key}</h2>
 				)}
 				<ul class="sp-list" role="list">
-					{group.entries.map((entry) => (
-						<li class="sp-list-item" data-entry={entry.path}>
-							<span class="sp-list-marker" aria-hidden="true">
-								•
-							</span>
-							<span class="sp-list-primary">{entry.basename}</span>
-							{secondary.length > 0 && (
-								<span class="sp-list-secondary">
-									{secondary.map((prop, i) => (
-										<span class="sp-list-prop" data-property={prop}>
-											{i > 0 ? ' · ' : ''}
-											<span class="sp-list-prop-label">{getDisplayName(prop)}:</span>{' '}
-											{formatCell(entry.values[prop] ?? null)}
-										</span>
-									))}
-								</span>
-							)}
-						</li>
-					))}
+					{group.entries.map((entry) => {
+						const thumbUrl =
+							thumbProp !== undefined ? imageUrl(entry.values[thumbProp] ?? null) : null;
+						return (
+							<li class="sp-list-item" data-entry={entry.path}>
+								{thumbUrl !== null ? (
+									<img
+										class="sp-list-thumb"
+										src={thumbUrl}
+										alt={entry.basename}
+										data-property={thumbProp}
+										loading="lazy"
+									/>
+								) : (
+									<span class="sp-list-marker" aria-hidden="true">
+										•
+									</span>
+								)}
+								<span class="sp-list-primary">{entry.basename}</span>
+								{secondary.length > 0 && (
+									<span class="sp-list-secondary">
+										{secondary.map((prop, i) => (
+											<span class="sp-list-prop" data-property={prop}>
+												{i > 0 ? ' · ' : ''}
+												<span class="sp-list-prop-label">{getDisplayName(prop)}:</span>{' '}
+												{formatCell(entry.values[prop] ?? null)}
+											</span>
+										))}
+									</span>
+								)}
+							</li>
+						);
+					})}
 				</ul>
 			</div>
 		))
@@ -79,6 +99,13 @@ const grouped = snapshot.groups.some((g) => g.key !== null);
 	}
 	.sp-list-marker {
 		color: var(--sp-color-accent);
+	}
+	.sp-list-thumb {
+		width: 2.5rem;
+		height: 2.5rem;
+		object-fit: cover;
+		border-radius: var(--sp-radius);
+		align-self: center;
 	}
 	.sp-list-primary {
 		color: var(--sp-color-fg);

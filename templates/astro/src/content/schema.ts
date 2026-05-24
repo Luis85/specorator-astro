@@ -28,6 +28,17 @@ export type CellValue = z.infer<typeof cellValueSchema>;
 export const viewTypeSchema = z.enum(['table', 'cards', 'list']);
 export type ViewType = z.infer<typeof viewTypeSchema>;
 
+/**
+ * One referenced vault attachment copied into the site (FR-16; DESIGN §5.8). The
+ * asset pipeline (C7) records one per distinct source so the build can serve the
+ * copied file. Optional on the snapshot so pre-C7 fixtures stay valid.
+ */
+export const assetRefSchema = z.object({
+	source: z.string(),
+	url: z.string(),
+});
+export type AssetRef = z.infer<typeof assetRefSchema>;
+
 /** One harvested entry (a note matching the base's filters). */
 export const entrySchema = z.object({
 	path: z.string(),
@@ -65,12 +76,20 @@ export const snapshotSchema = z.object({
 				direction: z.enum(['ASC', 'DESC']),
 			})
 			.optional(),
+		/**
+		 * Property ids whose values are image references rewritten to public URLs
+		 * by the asset pipeline (C7/FR-16); the views render these as `<img>`.
+		 * Optional so pre-C7 snapshots stay valid.
+		 */
+		imageProperties: z.array(z.string()).optional(),
 	}),
 	render: z.object({
 		component: z.string(),
 		layout: z.string(),
 	}),
 	groups: z.array(groupSchema),
+	/** Manifest of referenced attachments resolved to public URLs (FR-16). */
+	assets: z.array(assetRefSchema).optional(),
 	generatedAt: z.string(),
 });
 export type ViewSnapshot = z.infer<typeof snapshotSchema>;

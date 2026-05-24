@@ -6,12 +6,14 @@
  * entry. The card title is the entry basename; the remaining `view.order`
  * properties render as labelled fields. Honors grouping the same way as the
  * other views: flat for a single null-key group, a heading per keyed group.
- * Card-specific options (image/cardSize) are not yet carried by the snapshot
- * schema — that detail arrives with the asset pipeline (C7); this stays legible
- * without them. Replaced on plugin upgrade — shadow with src/user/views.
+ * Image-typed properties (e.g. a card cover, `note.cover`) are flagged in
+ * `view.imageProperties` by the asset pipeline (C7/FR-16); their values are
+ * already rewritten to public URLs. The first image property renders as the
+ * card cover; any further image fields render inline as `<img>`. Replaced on
+ * plugin upgrade — shadow with src/user/views.
  */
 import type { ViewSnapshot } from '../../content/schema';
-import { formatCell, getDisplayName } from './labels';
+import { formatCell, getDisplayName, imageUrl, isImageProperty } from './labels';
 
 interface Props {
 	snapshot: ViewSnapshot;
@@ -19,7 +21,11 @@ interface Props {
 
 const { snapshot } = Astro.props;
 const fields = snapshot.view.order;
+const imageProps = snapshot.view.imageProperties;
 const grouped = snapshot.groups.some((g) => g.key !== null);
+// The first image-typed property in display order is the card cover; remaining
+// fields (image or text) render in the field list below the title.
+const coverProp = fields.find((field) => isImageProperty(field, imageProps));
 ---
 
 <section class="sp-cards-view" data-view="cards">
@@ -30,21 +36,50 @@ const grouped = snapshot.groups.some((g) => g.key !== null);
 					<h2 class="sp-group-heading">{group.key}</h2>
 				)}
 				<ul class="sp-cards" role="list">
-					{group.entries.map((entry) => (
-						<li class="sp-card" data-entry={entry.path}>
-							<h3 class="sp-card-title">{entry.basename}</h3>
-							<dl class="sp-card-fields">
-								{fields
-									.filter((field) => field !== 'file.name')
-									.map((field) => (
-										<div class="sp-card-field" data-property={field}>
-											<dt>{getDisplayName(field)}</dt>
-											<dd>{formatCell(entry.values[field] ?? null)}</dd>
-										</div>
-									))}
-							</dl>
-						</li>
-					))}
+					{group.entries.map((entry) => {
+						const coverUrl =
+							coverProp !== undefined ? imageUrl(entry.values[coverProp] ?? null) : null;
+						return (
+							<li class="sp-card" data-entry={entry.path}>
+								{coverUrl !== null && (
+									<img
+										class="sp-card-cover"
+										src={coverUrl}
+										alt={entry.basename}
+										data-property={coverProp}
+										loading="lazy"
+									/>
+								)}
+								<h3 class="sp-card-title">{entry.basename}</h3>
+								<dl class="sp-card-fields">
+									{fields
+										.filter((field) => field !== 'file.name' && field !== coverProp)
+										.map((field) => {
+											const fieldImage = isImageProperty(field, imageProps)
+												? imageUrl(entry.values[field] ?? null)
+												: null;
+											return (
+												<div class="sp-card-field" data-property={field}>
+													<dt>{getDisplayName(field)}</dt>
+													<dd>
+														{fieldImage !== null ? (
+															<img
+																class="sp-card-image"
+																src={fieldImage}
+																alt={getDisplayName(field)}
+																loading="lazy"
+															/>
+														) : (
+															formatCell(entry.values[field] ?? null)
+														)}
+													</dd>
+												</div>
+											);
+										})}
+								</dl>
+							</li>
+						);
+					})}
 				</ul>
 			</div>
 		))
@@ -73,6 +108,19 @@ const grouped = snapshot.groups.some((g) => g.key !== null);
 		border: 1px solid var(--sp-color-muted);
 		border-radius: var(--sp-radius);
 		padding: var(--sp-space);
+	}
+	.sp-card-cover {
+		display: block;
+		width: 100%;
+		height: auto;
+		border-radius: var(--sp-radius);
+		margin-bottom: 0.5rem;
+		object-fit: cover;
+	}
+	.sp-card-image {
+		max-width: 100%;
+		height: auto;
+		border-radius: var(--sp-radius);
 	}
 	.sp-card-title {
 		margin: 0 0 0.5rem;

@@ -53,11 +53,29 @@ export interface SyncPlan {
 	warnings: string[];
 }
 
+/**
+ * One referenced vault attachment that was copied into the site (FR-16; DESIGN
+ * §5.8). The asset pipeline records one of these per distinct source so the
+ * build can copy `source` (vault-relative) to `url` (under `public/`).
+ */
+export interface AssetRef {
+	/** Normalized vault-relative source path of the attachment. */
+	source: string;
+	/** Public URL the rewritten reference points at (e.g. `/assets/cover.png`). */
+	url: string;
+}
+
 /** One harvested entry (a note matching the base's filters). */
 export interface EntrySnapshot {
 	path: string;
 	basename: string;
 	route: string;
+	/**
+	 * Property values. For image-typed properties (those listed in
+	 * {@link ViewSnapshot.view.imageProperties}) the asset pipeline rewrites the
+	 * raw reference to the resolved public URL (or a placeholder URL when the
+	 * attachment is missing), so the renderer can emit `<img src=…>` directly.
+	 */
 	values: Record<BasesPropertyId, CellValue>;
 }
 
@@ -82,8 +100,20 @@ export interface ViewSnapshot {
 		name: string;
 		order: BasesPropertyId[];
 		groupBy?: { property: BasesPropertyId; direction: 'ASC' | 'DESC' };
+		/**
+		 * Property ids whose values are images (e.g. a card cover, `note.cover`).
+		 * The renderer emits `<img src=…>` for these; their entry `values` already
+		 * hold the resolved public URL (FR-16). Optional — absent means none.
+		 */
+		imageProperties?: BasesPropertyId[];
 	};
 	render: { component: string; layout: string };
 	groups: EntryGroup[];
+	/**
+	 * Manifest of vault attachments referenced by this view's entries, resolved
+	 * to public URLs (FR-16; DESIGN §5.8). The copier copies each `source` into
+	 * the project's `public/` at `url`. Optional — absent/empty means no assets.
+	 */
+	assets?: AssetRef[];
 	generatedAt: string;
 }
