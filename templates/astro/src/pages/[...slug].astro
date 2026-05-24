@@ -1,0 +1,61 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Dynamic listing route (docs/DESIGN.md §5.5). One static page per committed
+ * snapshot, addressed by the snapshot's authoritative listing `route` (the
+ * collection entry id, e.g. `/books`). `getStaticPaths()` enumerates the
+ * `snapshots` collection; each page dispatches to a view component via the
+ * stable registry barrel (`registry.ts`) using `render.component`, defaulting
+ * to the view `type` when the binding is `'auto'` (§5.6). The registry barrel
+ * keeps the file set stable so new components dodge Astro's new-file HMR gap
+ * (D9). Per-entry detail pages are C8 — out of scope here (listings only).
+ */
+import { getCollection } from 'astro:content';
+import { resolveLayout, resolveView } from '../registry';
+import type { ViewSnapshot } from '../content/schema';
+
+export async function getStaticPaths() {
+	const entries = await getCollection('snapshots');
+	return entries.map((entry) => {
+		// The entry id is the leading-slash listing route (e.g. `/books`); Astro's
+		// `[...slug]` param is slash-relative, so strip the leading slash.
+		const slug = entry.id.replace(/^\/+/, '');
+		return { params: { slug }, props: { snapshot: entry.data } };
+	});
+}
+
+interface Props {
+	snapshot: ViewSnapshot;
+}
+
+const { snapshot } = Astro.props;
+
+// Resolve the component: an explicit binding wins; `'auto'` (or anything
+// unresolved) falls back to the native view type (`table`/`cards`/`list`).
+const componentName =
+	snapshot.render.component && snapshot.render.component !== 'auto'
+		? snapshot.render.component
+		: snapshot.view.type;
+
+const View = resolveView(componentName);
+const layoutName =
+	snapshot.render.layout && snapshot.render.layout !== 'auto'
+		? snapshot.render.layout
+		: 'BaseLayout';
+const Layout = resolveLayout(layoutName);
+---
+
+<Layout title={snapshot.view.name}>
+	<header class="sp-listing-header">
+		<h1>{snapshot.view.name}</h1>
+	</header>
+	<View snapshot={snapshot} />
+</Layout>
+
+<style>
+	.sp-listing-header h1 {
+		color: var(--sp-color-fg);
+		margin-top: 0;
+	}
+</style>

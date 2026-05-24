@@ -12,12 +12,19 @@
  * and the resolution seam.
  */
 import Placeholder from './theme/views/Placeholder.astro';
+import Table from './theme/views/Table.astro';
+import Cards from './theme/views/Cards.astro';
+import List from './theme/views/List.astro';
 import BaseLayout from './theme/layouts/BaseLayout.astro';
 
 type AstroComponent = (props: Record<string, unknown>) => unknown;
 
 const views: Record<string, AstroComponent> = {
-	// C5 registers the real `table` / `cards` / `list` components here.
+	// Native Bases view types map to same-named registry entries; `render.component`
+	// (resolved per base/view) selects one, defaulting to the view `type` (§5.6).
+	table: Table as unknown as AstroComponent,
+	cards: Cards as unknown as AstroComponent,
+	list: List as unknown as AstroComponent,
 	placeholder: Placeholder as unknown as AstroComponent,
 };
 

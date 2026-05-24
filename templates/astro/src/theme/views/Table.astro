@@ -1,0 +1,79 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Template-owned `table` view (docs/DESIGN.md §5.5, §7; Bases mapping: columns
+ * via `view.order`). Renders one column per property id in `view.order` with a
+ * humanized header label, and one row per entry. Honors grouping: a single
+ * null-key group renders flat; keyed groups render a heading per group with its
+ * own row block. Replaced on plugin upgrade — shadow with src/user/views.
+ */
+import type { ViewSnapshot } from '../../content/schema';
+import { formatCell, getDisplayName } from './labels';
+
+interface Props {
+	snapshot: ViewSnapshot;
+}
+
+const { snapshot } = Astro.props;
+const columns = snapshot.view.order;
+const grouped = snapshot.groups.some((g) => g.key !== null);
+---
+
+<section class="sp-table-view" data-view="table">
+	{
+		snapshot.groups.map((group) => (
+			<div class="sp-group">
+				{grouped && group.key !== null && (
+					<h2 class="sp-group-heading">{group.key}</h2>
+				)}
+				<table class="sp-table">
+					<thead>
+						<tr>
+							{columns.map((col) => (
+								<th scope="col" data-property={col}>
+									{getDisplayName(col)}
+								</th>
+							))}
+						</tr>
+					</thead>
+					<tbody>
+						{group.entries.map((entry) => (
+							<tr data-entry={entry.path}>
+								{columns.map((col) => (
+									<td data-property={col}>{formatCell(entry.values[col] ?? null)}</td>
+								))}
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		))
+	}
+</section>
+
+<style>
+	.sp-table-view {
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-space);
+	}
+	.sp-group-heading {
+		margin: var(--sp-space) 0 0.5rem;
+		color: var(--sp-color-fg);
+	}
+	.sp-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+	.sp-table th,
+	.sp-table td {
+		text-align: left;
+		padding: 0.5rem 0.75rem;
+		border-bottom: 1px solid var(--sp-color-muted);
+	}
+	.sp-table th {
+		color: var(--sp-color-muted);
+		font-weight: 600;
+	}
+</style>

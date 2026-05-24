@@ -1,0 +1,97 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Template-owned `cards` view (docs/DESIGN.md §5.5, §7). Renders one card per
+ * entry. The card title is the entry basename; the remaining `view.order`
+ * properties render as labelled fields. Honors grouping the same way as the
+ * other views: flat for a single null-key group, a heading per keyed group.
+ * Card-specific options (image/cardSize) are not yet carried by the snapshot
+ * schema — that detail arrives with the asset pipeline (C7); this stays legible
+ * without them. Replaced on plugin upgrade — shadow with src/user/views.
+ */
+import type { ViewSnapshot } from '../../content/schema';
+import { formatCell, getDisplayName } from './labels';
+
+interface Props {
+	snapshot: ViewSnapshot;
+}
+
+const { snapshot } = Astro.props;
+const fields = snapshot.view.order;
+const grouped = snapshot.groups.some((g) => g.key !== null);
+---
+
+<section class="sp-cards-view" data-view="cards">
+	{
+		snapshot.groups.map((group) => (
+			<div class="sp-group">
+				{grouped && group.key !== null && (
+					<h2 class="sp-group-heading">{group.key}</h2>
+				)}
+				<ul class="sp-cards" role="list">
+					{group.entries.map((entry) => (
+						<li class="sp-card" data-entry={entry.path}>
+							<h3 class="sp-card-title">{entry.basename}</h3>
+							<dl class="sp-card-fields">
+								{fields
+									.filter((field) => field !== 'file.name')
+									.map((field) => (
+										<div class="sp-card-field" data-property={field}>
+											<dt>{getDisplayName(field)}</dt>
+											<dd>{formatCell(entry.values[field] ?? null)}</dd>
+										</div>
+									))}
+							</dl>
+						</li>
+					))}
+				</ul>
+			</div>
+		))
+	}
+</section>
+
+<style>
+	.sp-cards-view {
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-space);
+	}
+	.sp-group-heading {
+		margin: var(--sp-space) 0 0.5rem;
+		color: var(--sp-color-fg);
+	}
+	.sp-cards {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+		gap: var(--sp-space);
+	}
+	.sp-card {
+		border: 1px solid var(--sp-color-muted);
+		border-radius: var(--sp-radius);
+		padding: var(--sp-space);
+	}
+	.sp-card-title {
+		margin: 0 0 0.5rem;
+		color: var(--sp-color-fg);
+	}
+	.sp-card-fields {
+		margin: 0;
+	}
+	.sp-card-field {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 0.25rem;
+	}
+	.sp-card-field dt {
+		color: var(--sp-color-muted);
+		font-weight: 600;
+		margin: 0;
+	}
+	.sp-card-field dd {
+		margin: 0;
+	}
+</style>
