@@ -1,0 +1,39 @@
+{
+	"baseId": "films",
+	"route": "/films",
+	"source": { "kind": "file", "path": "Films/films.base" },
+	"view": {
+		"type": "cards",
+		"name": "Watchlist",
+		"order": ["file.name", "note.director", "note.year"]
+	},
+	"render": { "component": "auto", "layout": "auto" },
+	"groups": [
+		{
+			"key": null,
+			"entries": [
+				{
+					"path": "Films/Stalker.md",
+					"basename": "Stalker",
+					"route": "/films/stalker",
+					"values": {
+						"file.name": "Stalker",
+						"note.director": "Andrei Tarkovsky",
+						"note.year": 1979
+					}
+				},
+				{
+					"path": "Films/Solaris.md",
+					"basename": "Solaris",
+					"route": "/films/solaris",
+					"values": {
+						"file.name": "Solaris",
+						"note.director": "Andrei Tarkovsky",
+						"note.year": 1972
+					}
+				}
+			]
+		}
+	],
+	"generatedAt": "2026-05-24T00:00:00.000Z"
+}

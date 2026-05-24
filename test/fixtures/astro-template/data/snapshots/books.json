@@ -1,0 +1,45 @@
+{
+	"baseId": "books",
+	"route": "/books",
+	"source": { "kind": "file", "path": "Books/books.base" },
+	"view": {
+		"type": "table",
+		"name": "Reading list",
+		"order": ["file.name", "note.author", "formula.ppu"],
+		"groupBy": { "property": "note.status", "direction": "ASC" }
+	},
+	"render": { "component": "auto", "layout": "auto" },
+	"groups": [
+		{
+			"key": "Reading",
+			"entries": [
+				{
+					"path": "Books/Dune.md",
+					"basename": "Dune",
+					"route": "/books/dune",
+					"values": {
+						"file.name": "Dune",
+						"note.author": "Frank Herbert",
+						"formula.ppu": "12.50"
+					}
+				}
+			]
+		},
+		{
+			"key": "Finished",
+			"entries": [
+				{
+					"path": "Books/Neuromancer.md",
+					"basename": "Neuromancer",
+					"route": "/books/neuromancer",
+					"values": {
+						"file.name": "Neuromancer",
+						"note.author": "William Gibson",
+						"formula.ppu": "9.99"
+					}
+				}
+			]
+		}
+	],
+	"generatedAt": "2026-05-24T00:00:00.000Z"
+}

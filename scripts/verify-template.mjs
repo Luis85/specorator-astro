@@ -48,6 +48,117 @@ async function exists(p) {
 	}
 }
 
+/** Assert `needle` appears in `haystack`, else throw a labelled error. */
+function assertIncludes(haystack, needle, label) {
+	if (!haystack.includes(needle)) {
+		throw new Error(`${label}: expected to find ${JSON.stringify(needle)} in built HTML.`);
+	}
+}
+
+/** Count non-overlapping occurrences of `needle` in `haystack`. */
+function countOccurrences(haystack, needle) {
+	let count = 0;
+	let from = 0;
+	for (;;) {
+		const at = haystack.indexOf(needle, from);
+		if (at === -1) break;
+		count += 1;
+		from = at + needle.length;
+	}
+	return count;
+}
+
+/** Assert the index order of `first` precedes `second` in `haystack`. */
+function assertOrder(haystack, first, second, label) {
+	const a = haystack.indexOf(first);
+	const b = haystack.indexOf(second);
+	if (a === -1 || b === -1 || a > b) {
+		throw new Error(
+			`${label}: expected ${JSON.stringify(first)} to appear before ${JSON.stringify(second)}.`,
+		);
+	}
+}
+
+/**
+ * Verify the C5 listing routes (table/cards/list) emitted by the fixture data
+ * dir. Asserts on the built dist/**\/index.html: the correct view component, the
+ * column/field order from `view.order`, group headings for the grouped view,
+ * and one row/card/list-item per entry.
+ */
+async function assertSnapshotRoutes(dist) {
+	// --- /books — table, grouped by status (keyed groups) ---
+	const booksHtml = await readFile(path.join(dist, 'books', 'index.html'), 'utf8');
+	assertIncludes(booksHtml, 'data-view="table"', '/books');
+	// Columns render in `view.order` (file.name, note.author, formula.ppu): assert
+	// the header cells' property order and that each label is humanized.
+	assertOrder(
+		booksHtml,
+		'<th scope="col" data-property="file.name"',
+		'<th scope="col" data-property="note.author"',
+		'/books column order (Name→Author)',
+	);
+	assertOrder(
+		booksHtml,
+		'<th scope="col" data-property="note.author"',
+		'<th scope="col" data-property="formula.ppu"',
+		'/books column order (Author→Ppu)',
+	);
+	assertIncludes(booksHtml, '> Name <', '/books column header (humanized)');
+	assertIncludes(booksHtml, '> Author <', '/books column header (humanized)');
+	assertIncludes(booksHtml, '> Ppu <', '/books column header (humanized)');
+	// Group headings for the two keyed groups, in index order. Match the heading
+	// element so the assertion can't be satisfied by the view-name <h1>.
+	if (countOccurrences(booksHtml, 'class="sp-group-heading"') !== 2) {
+		throw new Error('/books: expected 2 group headings (one per keyed group).');
+	}
+	assertIncludes(booksHtml, '>Reading</h2>', '/books group heading');
+	assertIncludes(booksHtml, '>Finished</h2>', '/books group heading');
+	assertOrder(booksHtml, '>Reading</h2>', '>Finished</h2>', '/books group order');
+	// One row per entry (two entries across two groups).
+	if (countOccurrences(booksHtml, '<tr data-entry=') !== 2) {
+		throw new Error('/books: expected exactly 2 table rows (one per entry).');
+	}
+	assertIncludes(booksHtml, 'Frank Herbert', '/books cell value');
+	assertIncludes(booksHtml, 'William Gibson', '/books cell value');
+
+	// --- /films — cards, ungrouped (single null-key group) ---
+	const filmsHtml = await readFile(path.join(dist, 'films', 'index.html'), 'utf8');
+	assertIncludes(filmsHtml, 'data-view="cards"', '/films');
+	// One card per entry (two entries), with no group heading element (flat). The
+	// CSS class name appears in <style>; assert on the rendered <h2> element.
+	if (countOccurrences(filmsHtml, 'class="sp-card"') !== 2) {
+		throw new Error('/films: expected exactly 2 cards (one per entry).');
+	}
+	if (filmsHtml.includes('<h2 class="sp-group-heading"')) {
+		throw new Error('/films: ungrouped view must not emit a group heading element.');
+	}
+	assertIncludes(filmsHtml, '>Stalker</h3>', '/films card title');
+	assertIncludes(filmsHtml, '>Solaris</h3>', '/films card title');
+	// Field labels humanized from view.order (director/year), in order. file.name
+	// is the card title and is excluded from the field list.
+	assertIncludes(filmsHtml, '>Director</dt>', '/films field label');
+	assertIncludes(filmsHtml, '>Year</dt>', '/films field label');
+	assertOrder(filmsHtml, '>Director</dt>', '>Year</dt>', '/films field order');
+
+	// --- /tasks — list, ungrouped ---
+	const tasksHtml = await readFile(path.join(dist, 'tasks', 'index.html'), 'utf8');
+	assertIncludes(tasksHtml, 'data-view="list"', '/tasks');
+	// One list item per entry (two entries).
+	if (countOccurrences(tasksHtml, 'class="sp-list-item"') !== 2) {
+		throw new Error('/tasks: expected exactly 2 list items (one per entry).');
+	}
+	if (tasksHtml.includes('<h2 class="sp-group-heading"')) {
+		throw new Error('/tasks: ungrouped view must not emit a group heading element.');
+	}
+	assertIncludes(tasksHtml, '>Ship C5<', '/tasks item');
+	assertIncludes(tasksHtml, '>Write docs<', '/tasks item');
+	assertIncludes(tasksHtml, '>Priority:<', '/tasks secondary field label');
+
+	console.log(
+		'[verify:template] OK — table/cards/list listing routes built with correct order/grouping.',
+	);
+}
+
 async function main() {
 	const work = await mkdtemp(path.join(tmpdir(), 'specorator-template-'));
 	console.log(`[verify:template] Staging template in ${work}`);
@@ -86,6 +197,11 @@ async function main() {
 		if (!fixtureMarkup.includes('Fixture build OK')) {
 			throw new Error('Fixture route built but did not render the expected content.');
 		}
+
+		// C5: assert the snapshot-driven listing routes built from the fixture data
+		// dir (test/fixtures/astro-template/data/**) with correct view, column
+		// order, grouping, and one row/card/list-item per entry.
+		await assertSnapshotRoutes(dist);
 
 		console.log('[verify:template] OK — astro check + build succeeded; static routes emitted.');
 	} finally {

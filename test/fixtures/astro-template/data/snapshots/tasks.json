@@ -1,0 +1,37 @@
+{
+	"baseId": "tasks",
+	"route": "/tasks",
+	"source": { "kind": "file", "path": "Tasks/tasks.base" },
+	"view": {
+		"type": "list",
+		"name": "Backlog",
+		"order": ["file.name", "note.priority"]
+	},
+	"render": { "component": "auto", "layout": "auto" },
+	"groups": [
+		{
+			"key": null,
+			"entries": [
+				{
+					"path": "Tasks/Ship C5.md",
+					"basename": "Ship C5",
+					"route": "/tasks/ship-c5",
+					"values": {
+						"file.name": "Ship C5",
+						"note.priority": "High"
+					}
+				},
+				{
+					"path": "Tasks/Write docs.md",
+					"basename": "Write docs",
+					"route": "/tasks/write-docs",
+					"values": {
+						"file.name": "Write docs",
+						"note.priority": "Low"
+					}
+				}
+			]
+		}
+	],
+	"generatedAt": "2026-05-24T00:00:00.000Z"
+}
