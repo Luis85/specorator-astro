@@ -1,5 +1,6 @@
 import type { ResolvedTarget, SiteConfig, ViewSnapshot } from './domain/types';
 import type { TemplateFile } from './domain/template';
+import type { AssetCopyTask, AssetLocation } from './usecases/resolve-assets';
 
 /** Provides the user's site configuration (managed in the plugin's settings). */
 export interface SettingsPort {
@@ -15,6 +16,30 @@ export interface BasesPort {
 export interface SnapshotWriterPort {
 	/** Atomically replace all persisted snapshots with exactly this set. */
 	commit(snapshots: ViewSnapshot[]): Promise<void>;
+}
+
+/**
+ * Resolves + copies referenced vault attachments into the Astro project's
+ * `public/` tree (FR-16; DESIGN §5.8). The **decision** of what to resolve,
+ * rewrite, and copy is pure (`resolveSnapshotAssets`); this port is the thin I/O
+ * seam for the two side-effecting halves it cannot do itself:
+ *
+ * - `locate` reads Obsidian's metadata cache to turn a (possibly wiki) reference
+ *   into a concrete vault file (relative to the referencing note), synchronously
+ *   — so the pure pipeline can call it inline while rewriting.
+ * - `copyAll` executes the resulting copy plan: it copies each referenced vault
+ *   file into `public/`, **deduped by content hash** (skip identical bytes
+ *   already present) and copying **only** referenced files; a source that has
+ *   gone missing since `locate` is skipped with a returned warning, never fatal.
+ */
+export interface AssetSourcePort {
+	/** Resolve a reference (relative to `fromNotePath`) to a vault file, or null. */
+	locate(reference: string, fromNotePath: string): AssetLocation | null;
+	/**
+	 * Copy every task into `public/` (deduped by content hash). Returns non-fatal
+	 * warnings for any source that could not be copied (e.g. vanished mid-sync).
+	 */
+	copyAll(tasks: readonly AssetCopyTask[]): Promise<{ warnings: string[] }>;
 }
 
 /** Runs the Astro toolchain (dev server / build) out-of-process. */

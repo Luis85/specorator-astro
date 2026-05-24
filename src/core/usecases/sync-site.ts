@@ -1,7 +1,14 @@
 import { checkCorePlugins } from '../domain/core-plugins';
 import { UserFacingError } from '../domain/errors';
 import { planSync } from '../domain/routing';
-import type { BasesPort, CorePluginsPort, SettingsPort, SnapshotWriterPort } from '../ports';
+import { resolveSnapshotAssets } from './resolve-assets';
+import type {
+	AssetSourcePort,
+	BasesPort,
+	CorePluginsPort,
+	SettingsPort,
+	SnapshotWriterPort,
+} from '../ports';
 import type { ViewSnapshot } from '../domain/types';
 
 export interface SyncResult {
@@ -11,12 +18,17 @@ export interface SyncResult {
 
 /**
  * Orchestrates a full site sync: guard the Bases core plugin (FR-10), read the
- * site config, plan routes, harvest a snapshot per target, then commit them
- * atomically. The orchestration logic lives here (locality); all I/O is
- * delegated to ports, so this is unit-testable with in-memory fakes and no
- * Obsidian. Diagnostics are returned, not logged — the composition root decides
- * how to surface them — while an unmet precondition (disabled Bases) throws a
- * `UserFacingError` the root shows as a Notice.
+ * site config, plan routes, harvest a snapshot per target, run the **asset
+ * pipeline** (resolve referenced attachments to public URLs, copy them into the
+ * project's `public/`, rewrite the snapshot values — FR-16), then commit the
+ * rewritten set atomically. The orchestration logic lives here (locality); all
+ * I/O is delegated to ports, so this is unit-testable with in-memory fakes and
+ * no Obsidian. Diagnostics (plan + asset warnings) are returned, not logged —
+ * the composition root decides how to surface them — while an unmet
+ * precondition (disabled Bases) throws a `UserFacingError` shown as a Notice.
+ *
+ * The asset port is optional: when absent (e.g. in a minimal test wiring) the
+ * asset step is skipped and the harvested snapshots are committed as-is.
  */
 export class SyncSite {
 	constructor(
@@ -24,6 +36,7 @@ export class SyncSite {
 		private readonly bases: BasesPort,
 		private readonly writer: SnapshotWriterPort,
 		private readonly corePlugins: CorePluginsPort,
+		private readonly assets?: AssetSourcePort,
 	) {}
 
 	async run(): Promise<SyncResult> {
@@ -41,12 +54,29 @@ export class SyncSite {
 		const config = await this.settings.readSiteConfig();
 		const plan = planSync(config);
 
-		const snapshots: ViewSnapshot[] = [];
+		const harvested: ViewSnapshot[] = [];
 		for (const target of plan.targets) {
-			snapshots.push(await this.bases.harvest(target));
+			harvested.push(await this.bases.harvest(target));
 		}
+
+		// Asset pipeline (FR-16): resolve + rewrite snapshot references to public
+		// URLs and copy the referenced attachments into the project's `public/`.
+		// Pure decision (resolveSnapshotAssets) + I/O (the port) kept separate.
+		const warnings = [...plan.warnings];
+		let snapshots = harvested;
+		if (this.assets !== undefined) {
+			const port = this.assets;
+			const resolved = resolveSnapshotAssets(harvested, (ref, from) =>
+				port.locate(ref, from),
+			);
+			snapshots = resolved.snapshots;
+			warnings.push(...resolved.warnings);
+			const copy = await this.assets.copyAll(resolved.copyPlan);
+			warnings.push(...copy.warnings);
+		}
+
 		await this.writer.commit(snapshots);
 
-		return { written: snapshots.length, warnings: plan.warnings };
+		return { written: snapshots.length, warnings };
 	}
 }

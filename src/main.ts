@@ -1,10 +1,11 @@
-import { Notice, Plugin, TFile } from 'obsidian';
+import { FileSystemAdapter, Notice, Plugin, TFile } from 'obsidian';
 import type { AstroProcessPort } from './core/ports';
 import { LiveResyncTrigger } from './core/domain/live-resync';
 import { UserFacingError } from './core/domain/errors';
 import { EnsureProject } from './core/usecases/ensure-project';
 import { PreviewSite } from './core/usecases/preview-site';
 import { SyncSite } from './core/usecases/sync-site';
+import { AssetSourceAdapter } from './adapters/asset-source-adapter';
 import { AstroProcessAdapter } from './adapters/astro-process-adapter';
 import { BasesHarvesterAdapter } from './adapters/bases-harvester-adapter';
 import { CorePluginsAdapter } from './adapters/core-plugins-adapter';
@@ -55,7 +56,17 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		const bootstrapDriver = new ProjectBootstrapAdapter(projectDir);
 		const bootstrap = new EnsureProject(bootstrapDriver);
 
-		const sync = new SyncSite(settings, bases, writer, corePlugins);
+		// Asset pipeline (FR-16): resolve referenced attachments via the metadata
+		// cache and copy them into the project's `public/`. Desktop-only, so the
+		// vault always has a `FileSystemAdapter` with an absolute base path; if it
+		// somehow isn't one, skip the asset step (sync still works without covers).
+		const fsAdapter = this.app.vault.adapter;
+		const assets =
+			fsAdapter instanceof FileSystemAdapter
+				? new AssetSourceAdapter(this.app, projectDir, fsAdapter.getBasePath())
+				: undefined;
+
+		const sync = new SyncSite(settings, bases, writer, corePlugins, assets);
 		const preview = new PreviewSite(bootstrap, corePlugins, sync, astro, webViewer);
 
 		this.addCommand({
