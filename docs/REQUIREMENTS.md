@@ -60,6 +60,24 @@
     settings UI (dropdowns populated from the registry).
   - **FR-11e** — Editing a component/layout/theme file while the dev server runs
     MUST be reflected live in the Web Viewer preview (HMR).
+- **FR-12 (Standalone pages)** — Beyond Bases collections, the plugin MUST turn
+  **individual vault notes** into website pages. A note opts in via frontmatter
+  (e.g. `site: true` / a `page` type) or a configured "pages" folder; one note
+  MUST be designatable as the **home page** (`/`). Page bodies render as markdown
+  with `[[wikilinks]]` resolved to site routes.
+- **FR-13 (Navigation)** — The plugin MUST produce a configurable **navigation**
+  menu (ordered, optionally nested) whose items point at page or collection
+  routes. Sources, in priority order: an explicit navigation config (sidecar or
+  designated note), page frontmatter hints (`nav: { title, order, group }`), then
+  a folder-structure fallback. The resolved tree MUST render consistently across
+  all pages (see `DESIGN.md §5.7`).
+- **FR-14 (Sitemap)** — The build MUST emit a standard `sitemap.xml` (via the
+  `@astrojs/sitemap` Astro integration), and MAY also generate an in-site
+  human-readable site map page from the route table.
+- **FR-15 (Routing)** — Routes MUST derive deterministically from
+  `slug`/`permalink` frontmatter, falling back to a `normalizePath`-cleaned
+  path/basename, with a route table that resolves cross-page and
+  page→collection links.
 
 ## 2. Non-functional requirements
 
@@ -211,6 +229,7 @@ Per the official Plugin guidelines:
 | `obsidian` | 1.12.3 | Obsidian API types |
 | `@types/node` | 25.9.1 | Node types |
 | `astro` | 6.3.7 | site generator (in project) |
+| `@astrojs/sitemap` | 3.7.2 | `sitemap.xml` generation (FR-14) |
 | `vitest` | 4.1.7 | test runner |
 | `@vitest/coverage-v8` | 4.1.7 | coverage |
 | `eslint` | 10.4.0 | linter |

@@ -37,6 +37,9 @@ pipeline publishes** is unoccupied.
 ## 2. Goals and non-goals
 
 ### Goals
+- Build a **complete website**, not just collection views: in addition to
+  Bases-driven collections, support **standalone pages authored as vault notes**,
+  a **configurable navigation** menu, and a generated **sitemap** (see §5.7).
 - Drive page generation from `.base` files **and** ` ```base ` code blocks.
 - Faithfully map the **native** Base view types — **table, cards, list** — to
   Astro components.
@@ -159,6 +162,11 @@ allowed to `import { ... } from 'obsidian'` or touch `child_process`/`fs`.
         │        └─► [WebViewerAdapter] setViewState 'webviewer' → in-app tab
         └─► [AstroProcessAdapter] astro build → dist/ (publishable static site)
 ```
+
+The same harvest pipeline also ingests two non-Bases inputs (see §5.7): **page
+notes** (individual vault notes designated as website pages) become `PageNode`s,
+and a **navigation config** becomes a `NavigationTree`. Bases collections, pages,
+and navigation together form the `SiteSpec` that Astro renders into a full site.
 
 The only Obsidian-dependent step is the harvest. Because the static build reads
 committed JSON snapshots, **publishing does not require Obsidian running at build
@@ -285,6 +293,45 @@ resolved binding into each snapshot so Astro renders deterministically.
 This keeps customization in plain `.astro`/CSS files (no bespoke DSL), upgrade
 -safe, and discoverable through the registry and settings UI.
 
+### 5.7 Pages, navigation & sitemap (full website)
+
+The plugin builds a **complete website**, not just collection views. Three
+content types compose the `SiteSpec`:
+
+1. **Collection routes** — Bases-driven (§5.1–5.6): a listing route per base
+   view plus optional per-entry detail routes.
+2. **Page routes** — **individual vault notes** designated as website pages.
+   A note opts in via frontmatter (e.g. `site: true` / a `page` type) or by
+   living in a configured "pages" folder. Each becomes a route; one note is the
+   **home page** (`/`). Page bodies are markdown, with `[[wikilinks]]` between
+   pages and to collection entries resolved to site routes.
+3. **Navigation** — a `NavigationTree` of ordered, optionally nested items, each
+   pointing at a page or collection route.
+
+**Routing / slugs.** Routes derive from a note's `slug`/`permalink` frontmatter,
+falling back to a normalized path/basename (`normalizePath`). The plugin owns a
+route table so wikilinks across pages and collections resolve deterministically.
+
+**Navigation sources** (resolved in priority order, all native-friendly):
+1. an explicit **navigation config** — a plugin-managed sidecar
+   (`navigation.json`) or a designated config note containing an ordered list;
+2. **page frontmatter** hints (`nav: { title, order, group }`);
+3. derived fallback from the pages folder structure.
+The resolved tree is written to a `navigation` snapshot; Astro layouts render it
+as the site menu (and breadcrumbs), so the same nav appears across all pages.
+
+**Sitemap.** The build emits a standard `sitemap.xml` via the official
+**`@astrojs/sitemap`** Astro integration (configured with the site `site` URL).
+Note: this is an **Astro build integration, not an Obsidian plugin**, so it is
+permitted under the native-only rule (NFR-NATIVE-3). An in-site, human-readable
+"site map" page can also be generated from the route table.
+
+**Harvest additions.** Beyond `BasesHarvesterAdapter`, the `VaultPort` adapter
+reads designated page notes (frontmatter + body via `Vault.cachedRead`) into
+`PageNode`s and resolves the `NavigationTree`. These join the Bases snapshots in
+the Astro project's data directory; pages render through the same registry-based
+component/layout system (§5.6).
+
 ## 6. Snapshot data model (proposed)
 
 One snapshot per base/view. Shape (illustrative):
@@ -331,6 +378,11 @@ Obsidian links in the harvester); or (b) point a `glob()` loader at the `.md`
 files directly (native, simplest, but bypasses the snapshot pipeline). Decision
 deferred to Phase 3.
 
+Alongside per-view base snapshots, the writer emits a **`pages`** snapshot
+(one `PageNode` per designated note: route, title, frontmatter, body) and a
+single **`navigation`** snapshot (the resolved `NavigationTree`). All three are
+consumed by the same Astro Content Layer loaders (§5.7).
+
 ## 7. Bases mapping reference
 
 - **View types (native, in scope)**: `table` (columns via `order`, `columnSize`,
@@ -374,10 +426,12 @@ deferred to Phase 3.
   command, and the **component/layout system** (§5.6): template/user split,
   registry resolution, per-base/view assignment via sidecar, and scaffold
   commands.
-- **Phase 3 — Breadth:** note-body rendering + wikilink resolution, multiple
-  bases / code-block bases, publish/deploy guidance. (A self-contained Astro
-  map renderer driven only by coordinate frontmatter — no Obsidian plugin
-  dependency — could be evaluated here without breaking the native-only rule.)
+- **Phase 3 — Full website:** standalone **page** notes + home page, the
+  **navigation** model/menu, `sitemap.xml` via `@astrojs/sitemap`, note-body
+  rendering + cross-page wikilink resolution, multiple bases / code-block bases,
+  publish/deploy guidance. (A self-contained Astro map renderer driven only by
+  coordinate frontmatter — no Obsidian plugin dependency — could also be
+  evaluated here without breaking the native-only rule.)
 - **Phase 4 — Release:** docs (TypeDoc), BRAT beta, marketplace submission.
 
 ## 10. Open questions
