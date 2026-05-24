@@ -693,6 +693,20 @@ conflict; full integration into the sections above is pending):
   `theme.css`; deeper changes via the component system. Component delivery uses a
   **stable virtual-module/registry barrel** (sidesteps Astro's new-file HMR gap).
 
+- **D10 — Require system Node.** Node is a documented prerequisite; bootstrap
+  detects + guides (path-override setting); no bundled runtime. Deps via `npm`
+  on first run; no pre-vendored `node_modules`; offline fails gracefully.
+- **D11 — Component consent.** Safe parameterized `theme/` components are the
+  default; the build-time-executing **code-fence library is opt-in behind
+  one-time consent**; right-click insertion works within the library folder.
+- **D12 — Pragmatic ports & adapters.** Two enforced zones — pure `core/`
+  (domain + use-cases + ports) and `adapters/` — boundaries machine-enforced
+  (`eslint-plugin-boundaries`). Confirms the §4 architecture.
+- **D13 — MIT license.**
+- **D14 — Explicit navigation.** Nav is an ordered, nestable list curated in the
+  vault config note (single source of truth) with an "add to nav" helper;
+  frontmatter/folder structure only as optional suggestions.
+
 **Revised MVP (per D7):** one base → **table + cards** collection **plus
 per-entry detail pages** (core-fidelity bodies + assets) → curated list + vault
 config note → transient harvest (hybrid trigger) → safe default theme → live
