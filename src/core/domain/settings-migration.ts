@@ -23,6 +23,14 @@ export const SETTINGS_SCHEMA_VERSION = 1;
 export const DEFAULT_DEV_PORT = 4321;
 
 /**
+ * Default for the live re-sync toggle (FR-20 / D2). **Off** by default: live
+ * re-sync transiently re-mounts the previewed base to re-harvest, which briefly
+ * flashes a leaf, so it stays opt-in. Manual "Sync site" and auto-sync on first
+ * preview always run regardless of this flag.
+ */
+export const DEFAULT_LIVE_RESYNC = false;
+
+/**
  * Toolchain/dev-server settings (FR-8): the port Astro is asked to use plus
  * optional absolute overrides for the Node and Astro binaries, used to dodge the
  * macOS GUI `PATH` gap and to point at a non-default install (DESIGN §5.3 /
@@ -37,6 +45,16 @@ export interface ToolchainConfig {
 	astroBinPath?: string;
 }
 
+/**
+ * Sync-trigger settings (FR-20 / D2): which automatic re-sync behaviors are on.
+ * Manual "Sync site" and auto-sync-on-first-preview are unconditional; only the
+ * debounced live re-sync of the previewed base is toggleable here.
+ */
+export interface SyncConfig {
+	/** Whether to live-re-sync the actively-previewed base on data changes. */
+	liveResync: boolean;
+}
+
 /** The whole persisted settings document, carrying its schema version. */
 export interface VersionedSettings {
 	/** Schema version of this persisted document (forward-migration anchor). */
@@ -45,6 +63,8 @@ export interface VersionedSettings {
 	site: SiteConfig;
 	/** Dev-server / toolchain configuration. */
 	toolchain: ToolchainConfig;
+	/** Sync-trigger configuration (live re-sync toggle). */
+	sync: SyncConfig;
 }
 
 /** Fresh defaults for a vault that has never persisted settings. */
@@ -53,6 +73,7 @@ export function defaultSettings(): VersionedSettings {
 		version: SETTINGS_SCHEMA_VERSION,
 		site: { includes: [] },
 		toolchain: { port: DEFAULT_DEV_PORT },
+		sync: { liveResync: DEFAULT_LIVE_RESYNC },
 	};
 }
 
@@ -108,14 +129,26 @@ function parseToolchain(raw: unknown): ToolchainConfig {
 	return toolchain;
 }
 
+/** Tolerantly parse sync config, defaulting the live-resync flag when absent. */
+function parseSync(raw: unknown): SyncConfig {
+	if (!isRecord(raw) || typeof raw.liveResync !== 'boolean') {
+		return { liveResync: DEFAULT_LIVE_RESYNC };
+	}
+	return { liveResync: raw.liveResync };
+}
+
 /**
  * Upgrade any persisted settings blob to the current versioned schema.
  *
  * Handles three input classes:
  * - **junk / nothing** (`null`, a string, a number) → fresh {@link defaultSettings}.
  * - **the original un-versioned `{ site }` shape** → wrapped with `version` and a
- *   defaulted `toolchain`.
+ *   defaulted `toolchain`/`sync`.
  * - **a current versioned document** → re-parsed defensively (idempotent).
+ *
+ * New optional fields (e.g. `sync.liveResync`, added after v1) are *defaulted*
+ * for old persisted data by the tolerant per-field parsers below — so no schema
+ * bump is needed since no existing data is transformed, only filled in.
  *
  * Always returns a fully-populated, valid {@link VersionedSettings}; never throws.
  */
@@ -131,5 +164,6 @@ export function migrate(persisted: unknown): VersionedSettings {
 		version: SETTINGS_SCHEMA_VERSION,
 		site: parseSiteConfig(persisted.site),
 		toolchain: parseToolchain(persisted.toolchain),
+		sync: parseSync(persisted.sync),
 	};
 }

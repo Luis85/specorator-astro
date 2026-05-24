@@ -3,6 +3,7 @@ import type { Plugin } from 'obsidian';
 import { SettingsStore } from '../../src/adapters/settings-store';
 import {
 	DEFAULT_DEV_PORT,
+	DEFAULT_LIVE_RESYNC,
 	SETTINGS_SCHEMA_VERSION,
 } from '../../src/core/domain/settings-migration';
 
@@ -41,6 +42,7 @@ describe('SettingsStore', () => {
 				includes: [{ basePath: 'a.base', viewName: 'v' }],
 			},
 			toolchain: { port: DEFAULT_DEV_PORT },
+			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 		});
 	});
 
@@ -97,6 +99,20 @@ describe('SettingsStore', () => {
 			port: 5000,
 			astroBinPath: '/opt/astro/bin/astro',
 		});
+	});
+
+	it('exposes the sync config, defaulting live-resync off', async () => {
+		const { plugin } = makePlugin(null);
+		const store = new SettingsStore(plugin);
+		await store.load();
+		expect(store.readSyncConfig()).toEqual({ liveResync: DEFAULT_LIVE_RESYNC });
+	});
+
+	it('reads a persisted live-resync toggle', async () => {
+		const { plugin } = makePlugin({ site: { includes: [] }, sync: { liveResync: true } });
+		const store = new SettingsStore(plugin);
+		await store.load();
+		expect(store.readSyncConfig()).toEqual({ liveResync: true });
 	});
 
 	it('persists edits to the in-memory config', async () => {

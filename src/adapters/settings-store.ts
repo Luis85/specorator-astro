@@ -4,6 +4,7 @@ import type { SettingsPort } from '../core/ports';
 import {
 	defaultSettings,
 	migrate,
+	type SyncConfig,
 	type ToolchainConfig,
 	type VersionedSettings,
 } from '../core/domain/settings-migration';
@@ -60,5 +61,10 @@ export class SettingsStore implements SettingsPort {
 	/** Snapshot the current toolchain/dev-server config for the process adapter. */
 	readToolchainConfig(): ToolchainConfig {
 		return { ...this.settings.toolchain };
+	}
+
+	/** Snapshot the current sync-trigger config (live-resync toggle, FR-20). */
+	readSyncConfig(): SyncConfig {
+		return { ...this.settings.sync };
 	}
 }

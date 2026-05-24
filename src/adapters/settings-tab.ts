@@ -107,7 +107,31 @@ export class SiteSettingTab extends PluginSettingTab {
 				}),
 		);
 
+		this.displaySyncTriggers(containerEl);
 		this.displayToolchain(containerEl);
+	}
+
+	/**
+	 * Sync-trigger section (FR-20 / D2). Manual "Sync site" and auto-sync on the
+	 * first preview always run; this toggle controls only the optional, debounced
+	 * live re-sync of the base currently being previewed (which briefly re-mounts
+	 * it to re-harvest), so it ships off and is opt-in.
+	 */
+	private displaySyncTriggers(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Sync').setHeading();
+
+		new Setting(containerEl)
+			.setName('Live re-sync the previewed base')
+			.setDesc(
+				'When previewing, re-sync automatically (debounced) as you edit notes in the base on screen. Off by default; "Sync site" and the first preview always sync regardless.',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.store.current().sync.liveResync).onChange((value) => {
+					this.store.edit((settings) => {
+						settings.sync.liveResync = value;
+					});
+				}),
+			);
 	}
 
 	/**
