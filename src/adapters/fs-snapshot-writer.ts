@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { normalizePath } from 'obsidian';
+import { emptyNavigationTree, type NavigationTree } from '../core/domain/navigation';
 import type { PageNode, ViewSnapshot } from '../core/domain/types';
 import type { SnapshotWriterPort } from '../core/ports';
 
@@ -19,6 +20,9 @@ const INDEX_FILENAME = 'index.json';
 
 /** The standalone-pages manifest the template's page loader reads (FR-12). */
 const PAGES_FILENAME = 'pages.json';
+
+/** The resolved navigation tree the template's nav loader reads (FR-13). */
+const NAVIGATION_FILENAME = 'navigation.json';
 
 /** One entry in {@link SnapshotIndex.snapshots}. */
 interface SnapshotIndexEntry {
@@ -51,6 +55,18 @@ interface PagesManifest {
 }
 
 /**
+ * Shape of `<dataDir>/navigation.json` — the resolved navigation tree (FR-13;
+ * DESIGN §5.7). Consumed by the template's navigation loader, which renders the
+ * menu + breadcrumbs across all pages. The plugin resolves the curated settings
+ * nav against the route table before commit, so this is already validated.
+ */
+interface NavigationManifest {
+	version: number;
+	generatedAt: string;
+	navigation: NavigationTree;
+}
+
+/**
  * Writes snapshots into the Astro project's data directory (FR-3; DESIGN §5.2).
  *
  * On-disk layout (relative to the project dir passed to the constructor):
@@ -60,14 +76,16 @@ interface PagesManifest {
  *   index.json                  # manifest: { version, generatedAt, snapshots: [{ baseId, view, route, file }] }
  *   snapshots/<slug>.json       # one ViewSnapshot per file, slug derived from baseId
  *   pages.json                  # standalone-pages manifest: { version, generatedAt, pages: PageNode[] }
+ *   navigation.json             # navigation manifest: { version, generatedAt, navigation: NavigationTree }
  * ```
  *
  * The whole `data/` directory is **atomically replaced** on every `commit`:
- * the full set — snapshots AND standalone pages (FR-12) — is staged in a sibling
- * temp dir, fsynced, then swapped into place in ONE atomic rename. A commit that
- * fails partway never leaves a half-written `data/` — the previous directory
- * (snapshots + pages together) stays intact (sequencing is owned by the writer,
- * not the caller). Writes go through Node `fs`; `normalizePath` is used for the
+ * the full set — snapshots, standalone pages (FR-12), AND the resolved
+ * navigation tree (FR-13) — is staged in a sibling temp dir, fsynced, then
+ * swapped into place in ONE atomic rename. A commit that fails partway never
+ * leaves a half-written `data/` — the previous directory (snapshots + pages +
+ * navigation together) stays intact (sequencing is owned by the writer, not the
+ * caller). Writes go through Node `fs`; `normalizePath` is used for the
  * vault-relative project path.
  */
 export class FsSnapshotWriter implements SnapshotWriterPort {
@@ -82,7 +100,11 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		this.tmpPrefix = path.join(normalizedProjectDir, '.data.tmp-');
 	}
 
-	async commit(snapshots: ViewSnapshot[], pages: PageNode[] = []): Promise<void> {
+	async commit(
+		snapshots: ViewSnapshot[],
+		pages: PageNode[] = [],
+		navigation: NavigationTree = emptyNavigationTree(),
+	): Promise<void> {
 		// Ensure the project dir exists so the sibling temp dir can be created.
 		await mkdir(path.dirname(this.dataDir), { recursive: true });
 
@@ -90,7 +112,7 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		//    the final swap can be an atomic rename, not a cross-device copy).
 		const stagingDir = await mkdtemp(this.tmpPrefix);
 		try {
-			await this.stage(stagingDir, snapshots, pages);
+			await this.stage(stagingDir, snapshots, pages, navigation);
 		} catch (error) {
 			// Staging failed: discard the partial temp dir and leave the existing
 			// data dir untouched. Nothing was swapped, so it stays intact (or
@@ -104,14 +126,16 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 	}
 
 	/**
-	 * Write every snapshot file, the snapshot index, and the standalone-pages
-	 * manifest into the staging dir, then fsync — so the later atomic swap brings
-	 * snapshots AND pages over together (a single atomic set, FR-12).
+	 * Write every snapshot file, the snapshot index, the standalone-pages
+	 * manifest, and the navigation manifest into the staging dir, then fsync — so
+	 * the later atomic swap brings snapshots, pages, AND navigation over together
+	 * (a single atomic set, FR-12, FR-13).
 	 */
 	private async stage(
 		stagingDir: string,
 		snapshots: ViewSnapshot[],
 		pages: PageNode[],
+		navigation: NavigationTree,
 	): Promise<void> {
 		const snapshotsDir = path.join(stagingDir, SNAPSHOTS_DIRNAME);
 		await mkdir(snapshotsDir, { recursive: true });
@@ -154,6 +178,20 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		await writeFileSynced(
 			path.join(stagingDir, PAGES_FILENAME),
 			`${JSON.stringify(pagesManifest, null, '\t')}\n`,
+		);
+
+		// Resolved navigation tree (FR-13): one manifest committed in the SAME
+		// staged dir, so the atomic swap brings it over with the snapshots + pages.
+		// Always written (an empty tree is a valid, complete manifest), so the
+		// template's nav loader never sees a half-written or stale menu.
+		const navigationManifest: NavigationManifest = {
+			version: DATA_LAYOUT_VERSION,
+			generatedAt: index.generatedAt,
+			navigation,
+		};
+		await writeFileSynced(
+			path.join(stagingDir, NAVIGATION_FILENAME),
+			`${JSON.stringify(navigationManifest, null, '\t')}\n`,
 		);
 
 		// fsync the directory trees so the rename's effects survive a crash.

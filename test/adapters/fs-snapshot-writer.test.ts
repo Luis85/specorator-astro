@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FsSnapshotWriter } from '../../src/adapters/fs-snapshot-writer';
+import type { NavigationTree } from '../../src/core/domain/navigation';
 import type { PageNode, ViewSnapshot } from '../../src/core/domain/types';
 
 /** Build a minimal standalone page node for the given route. */
@@ -25,6 +26,18 @@ interface PagesManifest {
 
 async function readPages(dataDir: string): Promise<PagesManifest> {
 	return JSON.parse(await readFile(path.join(dataDir, 'pages.json'), 'utf8')) as PagesManifest;
+}
+
+interface NavigationManifest {
+	version: number;
+	generatedAt: string;
+	navigation: NavigationTree;
+}
+
+async function readNavigation(dataDir: string): Promise<NavigationManifest> {
+	return JSON.parse(
+		await readFile(path.join(dataDir, 'navigation.json'), 'utf8'),
+	) as NavigationManifest;
 }
 
 /** Build a minimal, valid snapshot for the given base id / view name. */
@@ -199,6 +212,11 @@ describe('FsSnapshotWriter (temp-dir contract)', () => {
 		const pages = await readPages(dataDir);
 		expect(pages.version).toBe(1);
 		expect(pages.pages).toEqual([]);
+
+		// navigation.json is always written too — an empty tree is a valid manifest.
+		const navigation = await readNavigation(dataDir);
+		expect(navigation.version).toBe(1);
+		expect(navigation.navigation).toEqual({ items: [] });
 	});
 
 	it('writes the standalone pages into pages.json alongside the snapshots (FR-12)', async () => {
@@ -247,5 +265,66 @@ describe('FsSnapshotWriter (temp-dir contract)', () => {
 
 		// The prior pages.json (and snapshots) are untouched — the swap never ran.
 		expect(await readPages(dataDir)).toEqual(before);
+	});
+
+	it('writes the resolved navigation tree into navigation.json in the same swap (FR-13)', async () => {
+		const writer = new FsSnapshotWriter(projectDir);
+		const navigation: NavigationTree = {
+			items: [
+				{ title: 'Home', route: '/', children: [] },
+				{
+					title: 'Library',
+					children: [{ title: 'Books', route: '/books', children: [] }],
+				},
+			],
+		};
+		await writer.commit(
+			[snapshot('Books/books.base', 'Reading')],
+			[pageNode('/', true)],
+			navigation,
+		);
+
+		expect((await readNavigation(dataDir)).navigation).toEqual(navigation);
+		// The snapshots + pages committed in the SAME atomic swap are intact too.
+		expect((await readIndex(dataDir)).snapshots.map((e) => e.baseId)).toEqual([
+			'Books/books.base',
+		]);
+		expect((await readPages(dataDir)).pages.map((p) => p.route)).toEqual(['/']);
+	});
+
+	it('atomically REPLACES the previous navigation with the new tree (no merge)', async () => {
+		const writer = new FsSnapshotWriter(projectDir);
+		await writer.commit([], [], { items: [{ title: 'Old', route: '/old', children: [] }] });
+		expect((await readNavigation(dataDir)).navigation.items.map((i) => i.title)).toEqual([
+			'Old',
+		]);
+
+		await writer.commit([], [], { items: [{ title: 'New', route: '/new', children: [] }] });
+		expect((await readNavigation(dataDir)).navigation.items.map((i) => i.title)).toEqual([
+			'New',
+		]);
+	});
+
+	it('leaves the previous navigation manifest intact when a commit fails mid-stage', async () => {
+		const writer = new FsSnapshotWriter(projectDir);
+		await writer.commit([snapshot('keep')], [], {
+			items: [{ title: 'Keep', route: '/keep', children: [] }],
+		});
+		const before = await readNavigation(dataDir);
+
+		const exploding = snapshot('boom') as ViewSnapshot & { trap: unknown };
+		exploding.trap = {
+			toJSON() {
+				throw new Error('injected staging failure');
+			},
+		};
+		await expect(
+			writer.commit([exploding], [], {
+				items: [{ title: 'New', route: '/new', children: [] }],
+			}),
+		).rejects.toThrow('injected staging failure');
+
+		// The prior navigation.json is untouched — the swap never ran.
+		expect(await readNavigation(dataDir)).toEqual(before);
 	});
 });
