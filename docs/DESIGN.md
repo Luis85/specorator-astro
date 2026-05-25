@@ -749,6 +749,10 @@ conflict; full integration into the sections above is pending):
   text (styled "not published") + a build-warning list; targets are **never
   auto-included** (privacy-safe, self-contained).
 
+- _(D18 intentionally unused — a draft decision was folded into D19 before
+  ratification; the number is retained as a gap so existing D19 cross-references
+  in REQUIREMENTS.md and source comments stay stable.)_
+
 - **D19 — Ratified defaults.** Plugin `id: specorator-astro-viewer`, name
   **"Specorator Astro Viewer"** ("Specorator" alone is reserved for a separate
   plugin); package manager **npm**; dev port **4321** (auto-fallback if busy, configurable);
