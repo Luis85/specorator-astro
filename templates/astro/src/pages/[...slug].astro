@@ -2,39 +2,65 @@
 /*
  * specorator-template-version: 1
  *
- * Dynamic listing route (docs/DESIGN.md §5.5). One static page per committed
- * snapshot, addressed by the snapshot's authoritative listing `route` (the
- * collection entry id, e.g. `/books`). `getStaticPaths()` enumerates the
- * `snapshots` collection; each page dispatches to a view component via the
- * stable registry barrel (`registry.ts`) using `render.component`, defaulting
- * to the view `type` when the binding is `'auto'` (§5.6). The registry barrel
- * keeps the file set stable so new components dodge Astro's new-file HMR gap
- * (D9). Per-entry detail pages are C8 — out of scope here (listings only).
+ * Dynamic route for the whole site namespace (docs/DESIGN.md §5.5, §5.7). One
+ * static page per committed snapshot **listing** route (e.g. `/books`) AND one
+ * per published entry **detail** route (e.g. `/books/dune`), all in the single
+ * `[...slug]` namespace. `getStaticPaths()` enumerates the `snapshots`
+ * collection: each snapshot yields its listing page plus a detail page per entry
+ * (the entry's authoritative, collision-checked `route` from the plugin's route
+ * table — C8/FR-15). Listing pages dispatch to a view component via the stable
+ * registry barrel (`registry.ts`) using `render.component`, defaulting to the
+ * view `type` when the binding is `'auto'` (§5.6); detail pages render the
+ * `detail` component with the entry body at core fidelity (FR-21, D8). The
+ * registry barrel keeps the file set stable so new components dodge Astro's
+ * new-file HMR gap (D9).
  */
 import { getCollection } from 'astro:content';
 import { resolveLayout, resolveView } from '../registry';
-import type { ViewSnapshot } from '../content/schema';
+import type { EntrySnapshot, ViewSnapshot } from '../content/schema';
 
 export async function getStaticPaths() {
+	// Astro extracts `getStaticPaths` into an isolated module, so it cannot rely
+	// on frontmatter-scope helpers — keep the slug stripper inline. The
+	// `[...slug]` param is slash-relative, so drop the route's leading slash.
+	const toParam = (route: string): string => route.replace(/^\/+/, '');
+
 	const entries = await getCollection('snapshots');
-	return entries.map((entry) => {
-		// The entry id is the leading-slash listing route (e.g. `/books`); Astro's
-		// `[...slug]` param is slash-relative, so strip the leading slash.
-		const slug = entry.id.replace(/^\/+/, '');
-		return { params: { slug }, props: { snapshot: entry.data } };
-	});
+	const paths: {
+		params: { slug: string };
+		props: { snapshot: ViewSnapshot; entry?: EntrySnapshot };
+	}[] = [];
+
+	for (const collectionEntry of entries) {
+		const snapshot = collectionEntry.data;
+		// The listing page (the collection entry id is the listing route).
+		paths.push({ params: { slug: toParam(collectionEntry.id) }, props: { snapshot } });
+
+		// One detail page per published entry, addressed by the entry's route.
+		for (const group of snapshot.groups) {
+			for (const entry of group.entries) {
+				paths.push({ params: { slug: toParam(entry.route) }, props: { snapshot, entry } });
+			}
+		}
+	}
+
+	return paths;
 }
 
 interface Props {
 	snapshot: ViewSnapshot;
+	/** Present for a detail route; absent for a listing route. */
+	entry?: EntrySnapshot;
 }
 
-const { snapshot } = Astro.props;
+const { snapshot, entry } = Astro.props;
+const isDetail = entry !== undefined;
 
-// Resolve the component: an explicit binding wins; `'auto'` (or anything
-// unresolved) falls back to the native view type (`table`/`cards`/`list`).
-const componentName =
-	snapshot.render.component && snapshot.render.component !== 'auto'
+// Listing: an explicit component binding wins; `'auto'` falls back to the view
+// type. Detail: always the `detail` component (FR-21).
+const componentName = isDetail
+	? 'detail'
+	: snapshot.render.component && snapshot.render.component !== 'auto'
 		? snapshot.render.component
 		: snapshot.view.type;
 
@@ -44,13 +70,22 @@ const layoutName =
 		? snapshot.render.layout
 		: 'BaseLayout';
 const Layout = resolveLayout(layoutName);
+const title = isDetail ? entry.basename : snapshot.view.name;
 ---
 
-<Layout title={snapshot.view.name}>
-	<header class="sp-listing-header">
-		<h1>{snapshot.view.name}</h1>
-	</header>
-	<View snapshot={snapshot} />
+<Layout title={title}>
+	{
+		isDetail ? (
+			<View entry={entry} snapshot={snapshot} />
+		) : (
+			<>
+				<header class="sp-listing-header">
+					<h1>{snapshot.view.name}</h1>
+				</header>
+				<View snapshot={snapshot} />
+			</>
+		)
+	}
 </Layout>
 
 <style>

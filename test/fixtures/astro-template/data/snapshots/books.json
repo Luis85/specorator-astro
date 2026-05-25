@@ -21,6 +21,10 @@
 						"file.name": "Dune",
 						"note.author": "Frank Herbert",
 						"formula.ppu": "12.50"
+					},
+					"body": {
+						"format": "markdown",
+						"content": "Set on Arrakis. See also [Neuromancer](/books/neuromancer).\n\n> [!note] Spice\n> The spice must flow.\n\nUnresolved block ref [[Dune#^missing]] and a Dataview block:\n\n```dataview\nTABLE file.name FROM \"Books\"\n```\n"
 					}
 				}
 			]

@@ -172,6 +172,51 @@ async function assertSnapshotRoutes(dist) {
 	);
 }
 
+/**
+ * Verify the C8 detail pages: `getStaticPaths` emits one page per entry `route`
+ * in the shared `[...slug]` namespace, and the page renders the entry body at
+ * core fidelity — markdown, an Obsidian **callout** as callout markup, and a
+ * `[[wikilink]]` already resolved to the linked entry's route (FR-21, D8).
+ * Also proves graceful degradation: a block ref / Dataview snippet in the body
+ * does not fail the build and ships as passed-through content.
+ */
+async function assertDetailRoutes(dist) {
+	// Every published entry got its own detail page (one per entry across bases).
+	const detailRoutes = [
+		['books', 'dune'],
+		['books', 'neuromancer'],
+		['films', 'stalker'],
+		['films', 'solaris'],
+		['tasks', 'ship-c5'],
+		['tasks', 'write-docs'],
+	];
+	for (const segs of detailRoutes) {
+		const file = path.join(dist, ...segs, 'index.html');
+		if (!(await exists(file))) {
+			throw new Error(`Detail page missing for /${segs.join('/')} (FR-21): ${file}`);
+		}
+	}
+
+	// The /books/dune detail page: body rendered, callout markup, resolved link.
+	const duneHtml = await readFile(path.join(dist, 'books', 'dune', 'index.html'), 'utf8');
+	assertIncludes(duneHtml, 'class="sp-detail"', '/books/dune detail article');
+	assertIncludes(duneHtml, 'class="sp-detail-body"', '/books/dune rendered body');
+	// Frontmatter/values shown on the detail page (humanized field label + value).
+	assertIncludes(duneHtml, 'Frank Herbert', '/books/dune field value');
+	// The Obsidian callout `> [!note] Spice` renders as callout markup.
+	assertIncludes(duneHtml, 'data-callout="note"', '/books/dune callout');
+	assertIncludes(duneHtml, 'class="sp-callout-title"', '/books/dune callout title');
+	assertIncludes(duneHtml, 'The spice must flow.', '/books/dune callout body');
+	// The wikilink (resolved to a route by the plugin before write) links out.
+	assertIncludes(duneHtml, 'href="/books/neuromancer"', '/books/dune resolved wikilink');
+	// Graceful degradation (D8): the unresolved block ref + Dataview block ship as
+	// passed-through content; their presence proves the build did not fail on them.
+	assertIncludes(duneHtml, '#^missing', '/books/dune block-ref degraded (no crash)');
+	assertIncludes(duneHtml, 'dataview', '/books/dune dataview degraded (no crash)');
+
+	console.log('[verify:template] OK — per-entry detail pages built; body/callout/link rendered.');
+}
+
 async function main() {
 	const work = await mkdtemp(path.join(tmpdir(), 'specorator-template-'));
 	console.log(`[verify:template] Staging template in ${work}`);
@@ -215,6 +260,11 @@ async function main() {
 		// dir (test/fixtures/astro-template/data/**) with correct view, column
 		// order, grouping, and one row/card/list-item per entry.
 		await assertSnapshotRoutes(dist);
+
+		// C8: assert per-entry detail pages built across the shared `[...slug]`
+		// namespace, with the body rendered at core fidelity (markdown + callouts
+		// + resolved wikilinks) and block-ref/Dataview degrading gracefully (D8).
+		await assertDetailRoutes(dist);
 
 		// C7: the referenced attachment placed under public/assets/ (simulating the
 		// post-copy state the plugin's copier produces) is emitted into dist/, and

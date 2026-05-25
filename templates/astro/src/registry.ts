@@ -15,6 +15,7 @@ import Placeholder from './theme/views/Placeholder.astro';
 import Table from './theme/views/Table.astro';
 import Cards from './theme/views/Cards.astro';
 import List from './theme/views/List.astro';
+import Detail from './theme/views/Detail.astro';
 import BaseLayout from './theme/layouts/BaseLayout.astro';
 
 type AstroComponent = (props: Record<string, unknown>) => unknown;
@@ -25,6 +26,8 @@ const views: Record<string, AstroComponent> = {
 	table: Table as unknown as AstroComponent,
 	cards: Cards as unknown as AstroComponent,
 	list: List as unknown as AstroComponent,
+	// Per-entry detail page (FR-21); `[...slug].astro` selects it for detail routes.
+	detail: Detail as unknown as AstroComponent,
 	placeholder: Placeholder as unknown as AstroComponent,
 };
 

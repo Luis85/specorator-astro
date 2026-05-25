@@ -39,12 +39,27 @@ export const assetRefSchema = z.object({
 });
 export type AssetRef = z.infer<typeof assetRefSchema>;
 
+/**
+ * A rendered detail-page body carried on an entry (FR-21, D8; DESIGN §6). The
+ * `content` is markdown with `[[wikilinks]]` already resolved to routes and
+ * `![[embeds]]` to asset URLs by the plugin before write; the detail page renders
+ * it through the markdown + callout pipeline. Optional so pre-C8 fixtures stay
+ * valid.
+ */
+export const entryBodySchema = z.object({
+	format: z.literal('markdown'),
+	content: z.string(),
+});
+export type EntryBody = z.infer<typeof entryBodySchema>;
+
 /** One harvested entry (a note matching the base's filters). */
 export const entrySchema = z.object({
 	path: z.string(),
 	basename: z.string(),
 	route: z.string(),
 	values: z.record(z.string(), cellValueSchema),
+	/** Optional rendered detail-page body (FR-21, D8). Absent → no body section. */
+	body: entryBodySchema.optional(),
 });
 export type EntrySnapshot = z.infer<typeof entrySchema>;
 

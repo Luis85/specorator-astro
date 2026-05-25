@@ -1,0 +1,120 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Template-owned per-entry detail page body (FR-21, D8; DESIGN §5.7). Renders
+ * one published entry: its title, the Bases-resolved property values, and the
+ * note body at core fidelity (markdown + callouts; `[[wikilinks]]`/`![[embeds]]`
+ * already resolved to routes/asset URLs by the plugin before write). Block refs,
+ * transclusions, and Dataview are out of scope and degrade gracefully (D8) — the
+ * body renderer passes them through as plain text / fenced code rather than
+ * failing. Replaced on plugin upgrade — shadow with src/user/views.
+ */
+import type { EntrySnapshot, ViewSnapshot } from '../../content/schema';
+import { formatCell, getDisplayName, imageUrl, isImageProperty } from './labels';
+import { renderMarkdown } from '../markdown';
+
+interface Props {
+	entry: EntrySnapshot;
+	snapshot: ViewSnapshot;
+}
+
+const { entry, snapshot } = Astro.props;
+const imageProps = snapshot.view.imageProperties;
+// Show the view's display properties (skip the title, which is the heading).
+const fields = snapshot.view.order.filter((p) => p !== 'file.name');
+const bodyHtml = entry.body !== undefined ? renderMarkdown(entry.body.content) : '';
+---
+
+<article class="sp-detail" data-entry={entry.path}>
+	<header class="sp-detail-header">
+		<h1 class="sp-detail-title">{entry.basename}</h1>
+	</header>
+
+	{
+		fields.length > 0 && (
+			<dl class="sp-detail-fields">
+				{fields.map((field) => {
+					const fieldImage = isImageProperty(field, imageProps)
+						? imageUrl(entry.values[field] ?? null)
+						: null;
+					return (
+						<div class="sp-detail-field" data-property={field}>
+							<dt>{getDisplayName(field)}</dt>
+							<dd>
+								{fieldImage !== null ? (
+									<img
+										class="sp-detail-image"
+										src={fieldImage}
+										alt={getDisplayName(field)}
+										loading="lazy"
+									/>
+								) : (
+									formatCell(entry.values[field] ?? null)
+								)}
+							</dd>
+						</div>
+					);
+				})}
+			</dl>
+		)
+	}
+
+	{
+		bodyHtml !== '' && (
+			<div class="sp-detail-body" set:html={bodyHtml} />
+		)
+	}
+</article>
+
+<style>
+	.sp-detail {
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-space);
+	}
+	.sp-detail-title {
+		margin: 0;
+		color: var(--sp-color-fg);
+	}
+	.sp-detail-fields {
+		margin: 0;
+		display: grid;
+		gap: 0.25rem;
+	}
+	.sp-detail-field {
+		display: flex;
+		gap: 0.5rem;
+	}
+	.sp-detail-field dt {
+		color: var(--sp-color-muted);
+		font-weight: 600;
+		margin: 0;
+		min-width: 8rem;
+	}
+	.sp-detail-field dd {
+		margin: 0;
+	}
+	.sp-detail-image {
+		max-width: 100%;
+		height: auto;
+		border-radius: var(--sp-radius);
+	}
+	.sp-detail-body {
+		color: var(--sp-color-fg);
+		line-height: 1.6;
+	}
+	.sp-detail-body :global(.sp-callout) {
+		border: 1px solid var(--sp-color-muted);
+		border-left: 4px solid var(--sp-color-accent);
+		border-radius: var(--sp-radius);
+		padding: 0.5rem 0.75rem;
+		margin: var(--sp-space) 0;
+		background: color-mix(in srgb, var(--sp-color-accent) 8%, transparent);
+	}
+	.sp-detail-body :global(.sp-callout-title) {
+		font-weight: 700;
+		margin: 0 0 0.25rem;
+		color: var(--sp-color-accent);
+	}
+</style>
