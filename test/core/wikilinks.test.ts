@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveWikilinks } from '../../src/core/domain/wikilinks';
-import type { RouteResolver } from '../../src/core/domain/route-table';
+import { buildRouteTable, type RouteResolver } from '../../src/core/domain/route-table';
 
 /** A fake route resolver: a small published map, everything else off-site. */
 const published: Record<string, string> = {
@@ -32,6 +32,23 @@ describe('resolveWikilinks — on-site links', () => {
 		expect(out).toBe(
 			'[Dune](/books/dune) and [The Left Hand of Darkness](/books/the-left-hand-of-darkness)',
 		);
+	});
+
+	it('renders valid markdown for an entry whose explicit slug had ) and spaces (FR-15)', () => {
+		// The entry's slug `foo)bar baz` is slugified to /foo-bar-baz, so the wikilink
+		// cannot emit a stray `)` (which would close the link early) or a space.
+		const table = buildRouteTable([
+			{
+				route: '/books',
+				entries: [{ path: 'Books/Weird.md', basename: 'Weird', slug: 'foo)bar baz' }],
+			},
+		]);
+		const out = resolveWikilinks('See [[Weird]].', table.resolve);
+		expect(out).toBe('See [Weird](/foo-bar-baz).');
+		// The URL inside the link has no `)` to close it early and no space.
+		const url = /\]\(([^)]*)\)/.exec(out)?.[1];
+		expect(url).toBe('/foo-bar-baz');
+		expect(url).not.toMatch(/[)\s#?]/);
 	});
 });
 
@@ -94,8 +111,9 @@ describe('resolveWikilinks — off-site / unpublished (FR-24, D17)', () => {
 	});
 
 	it('degrades a same-note block ref ([[#^block]]) to readable text, never a broken link', () => {
-		// No note target → not routed; the readable subpath survives as plain text.
-		expect(resolveWikilinks('[[#^block]]', resolve)).toBe(' > block');
+		// No note target → not routed; the readable subpath survives as plain text,
+		// with no stray leading " > " (the base is empty).
+		expect(resolveWikilinks('[[#^block]]', resolve)).toBe('block');
 	});
 
 	it('passes a Dataview code fence straight through unchanged', () => {

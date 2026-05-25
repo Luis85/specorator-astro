@@ -134,5 +134,10 @@ function pickDisplayText(alias: string | undefined, target: string, subpath: str
 		return alias.trim();
 	}
 	const base = target.trim();
-	return subpath === '' ? base : `${base} > ${subpath.replace(/^\^/, '')}`;
+	const sub = subpath.replace(/^\^/, '');
+	if (subpath === '') {
+		return base;
+	}
+	// A same-note ref (`[[#^block]]`) has no base, so don't prefix a stray ` > `.
+	return base === '' ? sub : `${base} > ${sub}`;
 }
