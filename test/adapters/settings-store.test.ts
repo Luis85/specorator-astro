@@ -44,6 +44,7 @@ describe('SettingsStore', () => {
 			toolchain: { port: DEFAULT_DEV_PORT },
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
+			library: { folder: 'Site/components', consent: { granted: false } },
 		});
 	});
 
@@ -142,5 +143,32 @@ describe('SettingsStore', () => {
 		});
 		expect(saveData).toHaveBeenCalledOnce();
 		expect((await store.readSiteConfig()).includes).toHaveLength(1);
+	});
+
+	it('exposes the library config, defaulting folder + consent NOT granted (FR-11f/18)', async () => {
+		const { plugin } = makePlugin(null);
+		const store = new SettingsStore(plugin);
+		await store.load();
+		expect(store.readLibraryConfig()).toEqual({
+			folder: 'Site/components',
+			consent: { granted: false },
+		});
+		expect(store.currentConsent().granted).toBe(false);
+	});
+
+	it('grants then revokes build-execution consent, persisting each (FR-18)', async () => {
+		const { plugin, saveData } = makePlugin(null);
+		const store = new SettingsStore(plugin);
+		await store.load();
+
+		await store.grantLibraryConsent();
+		expect(store.currentConsent().granted).toBe(true);
+		// Provenance stamped (advisory) + persisted immediately (not just debounced).
+		expect(store.currentConsent().grantedAt).toBeTypeOf('string');
+		expect(saveData).toHaveBeenCalled();
+
+		await store.revokeLibraryConsent();
+		expect(store.currentConsent().granted).toBe(false);
+		expect(store.readLibraryConfig().consent).toEqual({ granted: false });
 	});
 });

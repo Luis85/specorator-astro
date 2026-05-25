@@ -1,4 +1,13 @@
-import { FileSystemAdapter, Notice, Plugin, TFile } from 'obsidian';
+import {
+	type Editor,
+	FileSystemAdapter,
+	type Menu,
+	Notice,
+	Plugin,
+	TFile,
+	TFolder,
+	normalizePath,
+} from 'obsidian';
 import type { AstroProcessPort, BuildExportPort } from './core/ports';
 import { LiveResyncTrigger } from './core/domain/live-resync';
 import { UserFacingError } from './core/domain/errors';
@@ -6,10 +15,20 @@ import { BuildSite } from './core/usecases/build-site';
 import { EnsureProject } from './core/usecases/ensure-project';
 import { PreviewSite } from './core/usecases/preview-site';
 import { SyncSite } from './core/usecases/sync-site';
+import { TranspileLibrary } from './core/usecases/transpile-library';
+import {
+	astroFenceSnippet,
+	buildComponentNote,
+	type ComponentNoteStub,
+} from './core/domain/component-note-stub';
+import { isComponentLibraryNote } from './core/domain/component-transpile';
 import { AssetSourceAdapter } from './adapters/asset-source-adapter';
 import { AstroProcessAdapter } from './adapters/astro-process-adapter';
 import { BasesHarvesterAdapter } from './adapters/bases-harvester-adapter';
 import { BuildExportAdapter } from './adapters/build-export-adapter';
+import { ComponentLibraryAdapter } from './adapters/component-library-adapter';
+import { ComponentNoteModal, type ComponentNoteRequest } from './adapters/component-note-modal';
+import { ConsentModal } from './adapters/consent-modal';
 import { CorePluginsAdapter } from './adapters/core-plugins-adapter';
 import { FsSnapshotWriter } from './adapters/fs-snapshot-writer';
 import { ProjectBootstrapAdapter } from './adapters/project-bootstrap-adapter';
@@ -82,6 +101,14 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		const sync = new SyncSite(settings, bases, writer, corePlugins, assets);
 		const preview = new PreviewSite(bootstrap, corePlugins, sync, astro, webViewer);
 
+		// Vault component library (FR-11f/g, FR-18 / D11): transpile code-fence
+		// component notes into src/generated/ — but ONLY behind the one-time
+		// build-execution consent gate (the use-case no-ops when consent is absent;
+		// the gate is pure core). Wired to run before sync/build so generated
+		// components are present when Astro renders.
+		const library = new ComponentLibraryAdapter(this.app, projectDir);
+		const transpile = new TranspileLibrary(settings, library);
+
 		// Build/export (FR-6, FR-22 / D6): BuildSite auto-syncs then runs `astro
 		// build` to `dist/`; the export adapter copies that `dist/` to the chosen
 		// location and reveals it. Desktop-only, so `vaultBasePath` is present; if
@@ -98,6 +125,9 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 			callback: async () => {
 				try {
 					await bootstrap.ensureProject();
+					// Transpile the consented component library before harvest so the
+					// site renders with the user's components (gated; no-op otherwise).
+					await this.transpileLibrary(transpile);
 					const result = await sync.run();
 					for (const warning of result.warnings) {
 						console.warn(`[specorator] ${warning}`);
@@ -114,6 +144,10 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 			name: 'Preview site',
 			callback: async () => {
 				try {
+					// Ensure the project + transpile the consented library before the
+					// preview flow auto-syncs, so the preview reflects user components.
+					await bootstrap.ensureProject();
+					await this.transpileLibrary(transpile);
 					await preview.run();
 				} catch (error) {
 					this.notifyFailure('preview', error);
@@ -126,6 +160,8 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 			name: 'Build site',
 			callback: async () => {
 				try {
+					await bootstrap.ensureProject();
+					await this.transpileLibrary(transpile);
 					const result = await build.run();
 					for (const warning of result.warnings) {
 						console.warn(`[specorator] ${warning}`);
@@ -172,7 +208,155 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 			},
 		});
 
+		// Component library consent (FR-18 / D11): a one-time, revocable prompt that
+		// discloses build-time execution (no sandbox) and grants/revokes the
+		// persisted consent the transpile gate reads.
+		this.addCommand({
+			id: 'component-library-consent',
+			name: 'Enable/disable component library (build-time code execution)',
+			callback: () => {
+				new ConsentModal(this.app, settings.currentConsent().granted, (decision) => {
+					void (async () => {
+						if (decision === 'grant') {
+							await settings.grantLibraryConsent();
+							new Notice(
+								'Specorator: component library enabled. Component notes will be transpiled on the next sync.',
+							);
+						} else if (decision === 'revoke') {
+							await settings.revokeLibraryConsent();
+							new Notice('Specorator: component library consent revoked.');
+						}
+					})();
+				}).open();
+			},
+		});
+
+		// Create a new component note (FR-11h): scaffold frontmatter + a stub fence
+		// in the library folder. Works regardless of consent (authoring is always
+		// allowed; only transpilation/execution is gated).
+		this.addCommand({
+			id: 'create-component',
+			name: 'Create component note',
+			callback: () => {
+				new ComponentNoteModal(this.app, (request) => {
+					void this.createComponentNote(settings, request);
+				}).open();
+			},
+		});
+
+		this.registerComponentMenus(settings);
 		this.registerLiveResync(settings, sync);
+	}
+
+	/**
+	 * Run the gated component-library transpile (FR-11f/g, FR-18). The consent
+	 * hard-gate lives in the pure use-case: when consent is absent this is a
+	 * no-op that reads/writes nothing. Skip notes are logged, not surfaced as
+	 * failures, so a malformed note never blocks a sync (FR-11g).
+	 */
+	private async transpileLibrary(transpile: TranspileLibrary): Promise<void> {
+		const result = await transpile.run();
+		for (const warning of result.warnings) {
+			console.warn(`[specorator] ${warning}`);
+		}
+		if (result.consented && result.emitted > 0) {
+			console.warn(`[specorator] transpiled ${String(result.emitted)} component note(s).`);
+		}
+	}
+
+	/**
+	 * Register the right-click affordances (FR-11k, OBS-4): an `editor-menu`
+	 * "Insert Astro component block" that drops a ```astro fence at the cursor
+	 * (and, inside the library folder, a "Create component here" entry), plus a
+	 * `file-menu` "New component note" on the library folder. Registered via
+	 * `registerEvent` so Obsidian tears them down on unload. DOM is built by the
+	 * menu API only (no innerHTML, OBS-1).
+	 */
+	private registerComponentMenus(settings: SettingsStore): void {
+		this.registerEvent(
+			this.app.workspace.on('editor-menu', (menu: Menu, editor: Editor) => {
+				menu.addItem((item) =>
+					item
+						.setTitle('Astro component block: insert code fence')
+						.setIcon('code')
+						.onClick(() => {
+							editor.replaceSelection(astroFenceSnippet());
+						}),
+				);
+				// When the active file is inside the library folder, offer a quick
+				// "Create component here" that scaffolds a sibling component note.
+				const active = this.app.workspace.getActiveFile();
+				const folder = settings.readLibraryConfig().folder;
+				if (active !== null && isComponentLibraryNote(active.path, folder)) {
+					menu.addItem((item) =>
+						item
+							.setTitle('Create component note')
+							.setIcon('file-plus')
+							.onClick(() => {
+								new ComponentNoteModal(this.app, (request) => {
+									void this.createComponentNote(settings, request);
+								}).open();
+							}),
+					);
+				}
+			}),
+		);
+
+		this.registerEvent(
+			this.app.workspace.on('file-menu', (menu: Menu, file) => {
+				const folder = settings.readLibraryConfig().folder;
+				// Offer "New component note" on the library folder (or notes within it).
+				const inLibrary =
+					file instanceof TFolder
+						? isComponentLibraryNote(file.path, folder) ||
+							isComponentLibraryNote(`${file.path}/.`, folder)
+						: isComponentLibraryNote(file.path, folder);
+				if (!inLibrary) return;
+				menu.addItem((item) =>
+					item
+						.setTitle('New component note')
+						.setIcon('file-plus')
+						.onClick(() => {
+							new ComponentNoteModal(this.app, (request) => {
+								void this.createComponentNote(settings, request);
+							}).open();
+						}),
+				);
+			}),
+		);
+	}
+
+	/**
+	 * Create a scaffolded component note in the library folder (FR-11h). The note
+	 * text is the pure `buildComponentNote`; this only does the Vault I/O: ensure
+	 * the folder exists, then create the note (never overwriting an existing one —
+	 * NFR-9) and open it. Surfaces success/conflict as a Notice.
+	 */
+	private async createComponentNote(
+		settings: SettingsStore,
+		request: ComponentNoteRequest,
+	): Promise<void> {
+		try {
+			const folder = normalizePath(settings.readLibraryConfig().folder);
+			const stub: ComponentNoteStub = buildComponentNote(request.name, request.kind);
+			const path = normalizePath(`${folder}/${stub.fileName}`);
+
+			if (this.app.vault.getAbstractFileByPath(folder) === null) {
+				await this.app.vault.createFolder(folder);
+			}
+			// Never clobber an existing note (NFR-9): bail with a clear message.
+			if (this.app.vault.getAbstractFileByPath(path) !== null) {
+				new Notice(`Specorator: ${path} already exists — left untouched.`);
+				return;
+			}
+			const created = await this.app.vault.create(path, stub.contents);
+			await this.app.workspace.getLeaf(true).openFile(created);
+			new Notice(
+				`Specorator: created ${path}. Enable the component library (consent) and run a sync.`,
+			);
+		} catch (error) {
+			this.notifyFailure('create component', error);
+		}
 	}
 
 	/**

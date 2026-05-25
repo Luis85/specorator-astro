@@ -139,9 +139,51 @@ export class SiteSettingTab extends PluginSettingTab {
 				}),
 		);
 
+		this.displayComponentLibrary(containerEl);
 		this.displaySyncTriggers(containerEl);
 		this.displayToolchain(containerEl);
 		this.displayBuild(containerEl);
+	}
+
+	/**
+	 * Component library section (FR-11f, FR-18 / D11). Sets the vault folder where
+	 * component notes live (default `Site/components`, configurable) and surfaces
+	 * the build-execution **consent** toggle. The consent control discloses that
+	 * component notes run at build time with no sandbox; flipping it on grants the
+	 * one-time consent the transpile gate reads, off revokes it. Both persist.
+	 */
+	private displayComponentLibrary(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Component library').setHeading();
+
+		new Setting(containerEl)
+			.setName('Component library folder')
+			.setDesc(
+				'Vault folder holding your component notes (each a frontmatter note with an `astro` code-fence). Notes here are excluded from website pages and transpiled into components.',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder('Site/components')
+					.setValue(this.store.readLibraryConfig().folder)
+					.onChange((value) => {
+						const trimmed = value.trim();
+						this.store.edit((settings) => {
+							settings.library.folder = trimmed === '' ? 'Site/components' : trimmed;
+						});
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Enable component library (build-time code execution)')
+			.setDesc(
+				'Off by default. When on, component notes are transpiled into real components that run at build time with no sandbox — they can import code, read files, and run processes, exactly like project source. Only enable for notes you trust.',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.store.currentConsent().granted).onChange((value) => {
+					void (value
+						? this.store.grantLibraryConsent()
+						: this.store.revokeLibraryConsent());
+				}),
+			);
 	}
 
 	/**
