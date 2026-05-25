@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
 	deriveRoute,
 	joinRoute,
+	normalizeRoute,
 	planSync,
 	slugify,
+	slugifyRoute,
 	slugifySegment,
 } from '../../src/core/domain/routing';
 import type { SiteConfig } from '../../src/core/domain/types';
@@ -16,6 +18,51 @@ describe('slugifySegment', () => {
 	it('falls back to "entry" for a basename that slugifies away', () => {
 		expect(slugifySegment('!!!')).toBe('entry');
 		expect(slugifySegment('')).toBe('entry');
+	});
+});
+
+describe('normalizeRoute', () => {
+	it('adds a single leading slash and strips a trailing slash', () => {
+		expect(normalizeRoute('books/')).toBe('/books');
+		expect(normalizeRoute('/books')).toBe('/books');
+	});
+
+	it('collapses interior // runs so a route compares equal everywhere (FR-15)', () => {
+		expect(normalizeRoute('a//b')).toBe('/a/b');
+		expect(normalizeRoute('/a///b/')).toBe('/a/b');
+	});
+
+	it('maps a blank/root route to "/"', () => {
+		expect(normalizeRoute('')).toBe('/');
+		expect(normalizeRoute('/')).toBe('/');
+		expect(normalizeRoute('   ')).toBe('/');
+	});
+});
+
+describe('slugifyRoute', () => {
+	it('slugifies each segment of an explicit multi-segment route', () => {
+		expect(slugifyRoute('Classics/The Dune Saga/')).toBe('/classics/the-dune-saga');
+	});
+
+	it('makes a slug with a ) safe so it cannot close a markdown link early (FR-15)', () => {
+		expect(slugifyRoute('foo)bar baz')).toBe('/foo-bar-baz');
+	});
+
+	it('strips a space, #, ?, and unicode out of an explicit slug (FR-15)', () => {
+		expect(slugifyRoute('foo bar')).toBe('/foo-bar');
+		expect(slugifyRoute('foo#frag')).toBe('/foo-frag');
+		expect(slugifyRoute('foo?q=1')).toBe('/foo-q-1');
+		expect(slugifyRoute('Über/Café')).toBe('/ber/caf');
+	});
+
+	it('collapses an interior // and keeps a single leading slash', () => {
+		expect(slugifyRoute('a//b')).toBe('/a/b');
+	});
+
+	it('maps a root/empty route to "/"', () => {
+		expect(slugifyRoute('/')).toBe('/');
+		expect(slugifyRoute('')).toBe('/');
+		expect(slugifyRoute('!!!')).toBe('/entry');
 	});
 });
 

@@ -27,7 +27,7 @@
  * resulting routes/resolver; the template never re-derives routes.
  */
 
-import { joinRoute, slugifySegment } from './routing';
+import { joinRoute, normalizeRoute, slugifyRoute, slugifySegment } from './routing';
 
 /** A minimal harvested entry the route table needs to place a detail route. */
 export interface RouteTableEntry {
@@ -97,16 +97,20 @@ export interface RouteTable {
 	resolve: RouteResolver;
 }
 
-/** Normalize a route to a single leading slash and no trailing slash (except root). */
-function normalize(route: string): string {
-	const trimmed = route.trim().replace(/^\/+|\/+$/g, '');
-	return trimmed === '' ? '/' : `/${trimmed}`;
-}
+/**
+ * Normalize a route to a single leading slash, no trailing slash (except root),
+ * and no interior `//`. Delegates to the shared {@link normalizeRoute} so the
+ * route table, pages, and navigation can't drift (FR-15).
+ */
+const normalize = normalizeRoute;
 
 /** The preferred (pre-collision) detail route for an entry under its listing. */
 function preferredDetailRoute(listingRoute: string, entry: RouteTableEntry): string {
 	if (entry.slug !== undefined && entry.slug.trim() !== '') {
-		return normalize(entry.slug);
+		// An explicit per-entry slug/permalink is slugified per segment (like a
+		// basename) so `)`, spaces, `#`, `?`, and unicode never reach a markdown
+		// link or `getStaticPaths` (FR-15).
+		return slugifyRoute(entry.slug);
 	}
 	return joinRoute(listingRoute, slugifySegment(entry.basename));
 }

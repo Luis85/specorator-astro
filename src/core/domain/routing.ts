@@ -30,10 +30,45 @@ export function slugifySegment(input: string): string {
 	);
 }
 
-/** Ensure a single leading slash and no trailing slash (except root). */
-function normalizeRoute(route: string): string {
-	const trimmed = route.trim().replace(/^\/+|\/+$/g, '');
+/**
+ * Ensure a single leading slash, no trailing slash (except root), and no
+ * interior `//` runs. This is the **one** route normalizer for the whole domain
+ * (route table, pages, navigation): they all share it so a route placed in the
+ * namespace and a nav/wikilink reference to it compare equal (FR-15). Keeping it
+ * in one place stops the three call sites from drifting (e.g. one collapsing
+ * `a//b` → `a/b` while another doesn't, so a nav item silently fails to match).
+ */
+export function normalizeRoute(route: string): string {
+	const trimmed = route
+		.trim()
+		.replace(/\\/g, '/')
+		.replace(/\/+/g, '/')
+		.replace(/^\/+|\/+$/g, '');
 	return trimmed === '' ? '/' : `/${trimmed}`;
+}
+
+/**
+ * Normalize **and** slugify an explicit route (a note's `slug`/`permalink`, or a
+ * target's explicit `route`): split into path segments, run each through
+ * {@link slugifySegment}, and rejoin with single slashes (leading slash kept).
+ *
+ * An explicit slug is otherwise emitted verbatim, so a value like `foo)bar baz`
+ * or `Über/Café#x` would leak `)`/space/`#`/unicode into markdown links (closing
+ * a `[…](…)` early or breaking the URL) and into Astro `getStaticPaths` params.
+ * Slugifying per segment makes every placed route URL-safe, exactly like a
+ * basename-derived route (FR-15). Empty segments (from interior `//`) are dropped.
+ */
+export function slugifyRoute(route: string): string {
+	const normalized = normalizeRoute(route);
+	if (normalized === '/') {
+		return '/';
+	}
+	const segments = normalized
+		.split('/')
+		.filter((seg) => seg !== '')
+		.map((seg) => slugifySegment(seg))
+		.filter((seg) => seg !== '');
+	return segments.length === 0 ? '/' : `/${segments.join('/')}`;
 }
 
 /** Join a parent route with a child segment, keeping a single leading slash. */
@@ -49,7 +84,9 @@ export function joinRoute(route: string, segment: string): string {
  */
 export function deriveRoute(target: PublishTarget, isPrimaryForBase: boolean): string {
 	if (target.route && target.route.trim() !== '') {
-		return normalizeRoute(target.route);
+		// An explicit user-supplied route is slugified per segment so non-URL-safe
+		// characters never reach the `[...slug]` namespace or a wikilink (FR-15).
+		return slugifyRoute(target.route);
 	}
 	const base = slugify(baseName(target.basePath));
 	if (isPrimaryForBase) {

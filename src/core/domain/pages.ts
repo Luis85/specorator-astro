@@ -31,6 +31,7 @@
  */
 
 import { isComponentLibraryNote } from './component-transpile';
+import { normalizeRoute, slugifyRoute } from './routing';
 import type { CellValue, EntryBody, PageNode } from './types';
 
 /** Note basenames that, absent an explicit flag, designate the home page. */
@@ -54,19 +55,6 @@ function basenameOf(path: string): string {
 	const clean = path.replace(/\\/g, '/').replace(/\/+$/g, '');
 	const last = clean.slice(clean.lastIndexOf('/') + 1);
 	return last.replace(/\.(md|base)$/i, '');
-}
-
-/**
- * Normalize a route to a single leading slash and no trailing slash (except the
- * root `/`). Mirrors `normalizePath` cleanup for site routes (FR-15).
- */
-function normalizeRoute(route: string): string {
-	const trimmed = route
-		.trim()
-		.replace(/\\/g, '/')
-		.replace(/\/+/g, '/')
-		.replace(/^\/+|\/+$/g, '');
-	return trimmed === '' ? '/' : `/${trimmed}`;
 }
 
 /**
@@ -184,7 +172,10 @@ export function derivePageRoute(
 	}
 	const explicit = explicitRoute(frontmatter);
 	if (explicit !== undefined) {
-		return normalizeRoute(explicit);
+		// An explicit slug/permalink is slugified per segment (like the path
+		// fallback) so non-URL-safe characters never reach the route namespace or a
+		// wikilink (FR-15).
+		return slugifyRoute(explicit);
 	}
 	const relative = pathRelativeToFolder(path, pagesFolder);
 	const segments = relative

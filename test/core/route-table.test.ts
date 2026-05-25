@@ -59,6 +59,33 @@ describe('buildRouteTable — placement', () => {
 		expect(table.detailRoutesByPath.get('Books/Dune.md')).toBe('/classics/dune');
 	});
 
+	it('slugifies an explicit slug so ), space, #, and unicode never reach the route (FR-15)', () => {
+		const table = buildRouteTable([
+			target(
+				'/books',
+				{ path: 'Books/A.md', basename: 'A', slug: 'foo)bar baz' },
+				{ path: 'Books/B.md', basename: 'B', slug: 'foo#frag' },
+				{ path: 'Books/C.md', basename: 'C', slug: 'Über/Café' },
+			),
+		]);
+		expect(table.detailRoutesByPath.get('Books/A.md')).toBe('/foo-bar-baz');
+		expect(table.detailRoutesByPath.get('Books/B.md')).toBe('/foo-frag');
+		expect(table.detailRoutesByPath.get('Books/C.md')).toBe('/ber/caf');
+		// No placed route ever contains a char that breaks a markdown link or getStaticPaths.
+		for (const r of table.routes) {
+			expect(r.route).toMatch(/^\/[a-z0-9/-]*$/);
+		}
+	});
+
+	it('collapses an interior // in an explicit slug so it matches a normalized reference (FR-15)', () => {
+		const table = buildRouteTable([
+			target('/books', { path: 'Books/A.md', basename: 'A', slug: 'a//b' }),
+		]);
+		// The entry is placed at /a/b, and a wikilink/nav reference normalizes to /a/b too.
+		expect(table.detailRoutesByPath.get('Books/A.md')).toBe('/a/b');
+		expect(table.resolve('Books/A.md')).toBe('/a/b');
+	});
+
 	it('normalizes a listing route to a single leading slash', () => {
 		const table = buildRouteTable([
 			target('books/', { path: 'Books/Dune.md', basename: 'Dune' }),

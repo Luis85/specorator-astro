@@ -28,6 +28,8 @@
  * during a sync, so nav targets are validated against the *actual* site.
  */
 
+import { normalizeRoute } from './routing';
+
 /**
  * One curated navigation item as stored in the plugin settings (FR-13; D14).
  * Ordered (its position in the parent's list is its order) and nestable
@@ -224,20 +226,6 @@ export interface ResolveNavigationResult {
 /** An empty navigation tree (the migration-safe default, FR-13). */
 export function emptyNavigationTree(): NavigationTree {
 	return { items: [] };
-}
-
-/**
- * Normalize a route to a single leading slash and no trailing slash (except the
- * root `/`). Mirrors the route table's `normalize` so a nav route and a placed
- * route compare equal (FR-15).
- */
-function normalizeRoute(route: string): string {
-	const trimmed = route
-		.trim()
-		.replace(/\\/g, '/')
-		.replace(/\/+/g, '/')
-		.replace(/^\/+|\/+$/g, '');
-	return trimmed === '' ? '/' : `/${trimmed}`;
 }
 
 /**
