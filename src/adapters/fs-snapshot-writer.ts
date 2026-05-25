@@ -1,4 +1,13 @@
-import { mkdir, mkdtemp, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import {
+	type FileHandle,
+	mkdir,
+	mkdtemp,
+	open,
+	readdir,
+	rename,
+	rm,
+	writeFile,
+} from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { normalizePath } from 'obsidian';
@@ -366,7 +375,7 @@ async function writeFileSynced(absolute: string, contents: string): Promise<void
 	await writeFile(absolute, contents, 'utf8');
 	const handle = await open(absolute, 'r+');
 	try {
-		await handle.sync();
+		await syncQuietly(handle);
 	} finally {
 		await handle.close();
 	}
@@ -376,10 +385,36 @@ async function writeFileSynced(absolute: string, contents: string): Promise<void
 async function fsyncDir(absolute: string): Promise<void> {
 	const handle = await open(absolute, 'r');
 	try {
-		await handle.sync();
+		await syncQuietly(handle);
 	} finally {
 		await handle.close();
 	}
+}
+
+// fsync is a crash-durability optimization, NOT correctness: the bytes are
+// already written (writeFile/rename completed) by the time we sync. Several
+// filesystems refuse fsync outright — cloud-synced vault folders (iCloud,
+// OneDrive, Dropbox), network shares, and Windows directory handles surface
+// EPERM/EINVAL/ENOTSUP/EISDIR/ENOSYS. Swallow exactly that "fsync unsupported"
+// class so a sync/preview still succeeds (with weaker durability) instead of
+// aborting the whole commit; rethrow anything else (e.g. EIO).
+const FSYNC_UNSUPPORTED_CODES = new Set(['EPERM', 'EINVAL', 'ENOTSUP', 'EISDIR', 'ENOSYS']);
+
+async function syncQuietly(handle: FileHandle): Promise<void> {
+	try {
+		await handle.sync();
+	} catch (error) {
+		if (isFsyncUnsupported(error)) return;
+		throw error;
+	}
+}
+
+function isFsyncUnsupported(error: unknown): boolean {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		FSYNC_UNSUPPORTED_CODES.has((error as { code?: string }).code ?? '')
+	);
 }
 
 /** `rename` `from` → `to` if `from` exists; returns whether it existed. */
