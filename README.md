@@ -66,10 +66,12 @@ A later release will be submitted to the official Community Plugins directory.
 ## Using it
 
 1. **Choose what goes on your site.** Right-click a `.base` file →
-   **"Add to site"**, then pick which view(s) to publish (cards, table, or
-   both). Your selections live in the plugin's **Settings** tab (Settings →
-   Specorator Astro Viewer), where you can also reorder, re-route, or remove
-   them.
+   **"Specorator: add to site"** (or run the command palette's **"Add active
+   base to site"** with the base open), then pick which view to publish (cards,
+   table, or list). If the base has only one view it is added straight away.
+   Your selections live in the plugin's **Settings** tab (Settings → Specorator
+   Astro Viewer) under **Published views**, where you can also add targets by
+   hand, reorder, re-route, or remove them.
 2. **Preview live.** Run **"Preview site"** — a tab opens inside Obsidian
    showing your real website. Edit a note in another pane and watch it refresh.
 3. **Style it.** A polished default theme ships out of the box; recolor and
