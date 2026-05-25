@@ -9,6 +9,7 @@ import type {
 	SettingsPort,
 	SnapshotWriterPort,
 } from '../../src/core/ports';
+import type { NavigationTree } from '../../src/core/domain/navigation';
 import type { RawPageNote } from '../../src/core/domain/pages';
 import type {
 	PageNode,
@@ -74,7 +75,7 @@ describe('SyncSite', () => {
 
 		const result = await new SyncSite(settings, bases, writer, corePluginsFake()).run();
 
-		expect(commit).toHaveBeenCalledWith([], []);
+		expect(commit).toHaveBeenCalledWith([], [], { items: [] });
 		expect(result.written).toBe(0);
 		expect(result.pages).toBe(0);
 		expect(result.warnings).toHaveLength(1);
@@ -239,6 +240,89 @@ describe('SyncSite', () => {
 		expect(about?.body?.content).toBe('See [Dune](/books/dune) and the [home](/) page.');
 		expect(result.written).toBe(1);
 		expect(result.pages).toBe(2);
+	});
+
+	it('resolves the curated nav against the route table and commits it (FR-13)', async () => {
+		const config: SiteConfig = {
+			includes: [{ basePath: 'Books/books.base', viewName: 'Reading' }],
+		};
+		const harvested: ViewSnapshot = {
+			baseId: 'books',
+			route: '/books',
+			source: { kind: 'file', path: 'Books/books.base' },
+			view: { type: 'table', name: 'Reading', order: ['file.name'] },
+			render: { component: 'auto', layout: 'auto' },
+			groups: [
+				{
+					key: null,
+					entries: [
+						{
+							path: 'Books/Dune.md',
+							basename: 'Dune',
+							route: '/books/dune',
+							values: { 'file.name': 'Dune' },
+						},
+					],
+				},
+			],
+			generatedAt: '2026-01-01T00:00:00.000Z',
+		};
+
+		const committed: NavigationTree[] = [];
+		const settings: SettingsPort = {
+			readSiteConfig: async () => config,
+			readNavConfig: () => ({
+				items: [
+					{ title: 'Books', route: '/books' },
+					{
+						title: 'Library',
+						children: [{ title: 'Dune', route: '/books/dune' }],
+					},
+					// An item pointing off-site becomes a label-with-warning, not dropped.
+					{ title: 'Missing', route: '/not-on-site' },
+				],
+			}),
+		};
+		const bases: BasesPort = { harvest: async () => harvested };
+		const writer: SnapshotWriterPort = {
+			commit: async (_snapshots, _pages = [], navigation = { items: [] }) => {
+				committed.push(navigation);
+			},
+		};
+
+		const result = await new SyncSite(settings, bases, writer, corePluginsFake()).run();
+
+		expect(committed).toHaveLength(1);
+		expect(committed[0]).toEqual({
+			items: [
+				{ title: 'Books', route: '/books', children: [] },
+				{
+					title: 'Library',
+					children: [{ title: 'Dune', route: '/books/dune', children: [] }],
+				},
+				{ title: 'Missing', children: [] },
+			],
+		});
+		// The off-site item surfaced a non-fatal warning the root can log.
+		expect(result.warnings.some((w) => w.includes('Missing'))).toBe(true);
+	});
+
+	it('commits an empty nav when no nav config is wired (FR-13)', async () => {
+		const config: SiteConfig = {
+			includes: [{ basePath: 'Books/books.base', viewName: 'Reading' }],
+		};
+		const committed: NavigationTree[] = [];
+		const settings: SettingsPort = { readSiteConfig: async () => config };
+		const bases: BasesPort = { harvest: async (t) => snapshotFor(t) };
+		const writer: SnapshotWriterPort = {
+			commit: async (_snapshots, _pages = [], navigation = { items: [] }) => {
+				committed.push(navigation);
+			},
+		};
+
+		await new SyncSite(settings, bases, writer, corePluginsFake()).run();
+
+		expect(committed[0]).toEqual({ items: [] });
 	});
 
 	it('commits an empty page set when no page loader is wired (FR-12)', async () => {

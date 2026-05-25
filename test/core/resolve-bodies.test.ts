@@ -129,4 +129,11 @@ describe('resolveSiteBodies', () => {
 		const { warnings } = resolveSiteBodies(snaps, pages);
 		expect(warnings.some((w) => w.includes('/about'))).toBe(true);
 	});
+
+	it('exposes every placed route (listing/detail/page) for nav validation (FR-13)', () => {
+		const snaps = [snapshot('/books', [entry('Books/Dune.md', 'Dune')])];
+		const pages = [page('Site/pages/About.md', '/about', 'Hi.')];
+		const { knownRoutes } = resolveSiteBodies(snaps, pages);
+		expect(knownRoutes).toEqual(['/about', '/books', '/books/dune']);
+	});
 });

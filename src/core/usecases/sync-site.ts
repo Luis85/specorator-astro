@@ -1,5 +1,6 @@
 import { checkCorePlugins } from '../domain/core-plugins';
 import { UserFacingError } from '../domain/errors';
+import { resolveNavigation } from '../domain/navigation';
 import { buildPageNodes } from '../domain/pages';
 import { planSync } from '../domain/routing';
 import { resolveSnapshotAssets } from './resolve-assets';
@@ -35,7 +36,10 @@ export interface SyncResult {
  * The asset port is optional: when absent (e.g. in a minimal test wiring) the
  * asset step is skipped and the harvested snapshots are committed as-is. The
  * page-loader port is likewise optional: when absent no standalone pages are
- * loaded and an empty page set is committed (FR-12).
+ * loaded and an empty page set is committed (FR-12). The curated navigation is
+ * read from the optional `readNavConfig` settings seam, resolved against the
+ * global route table, and committed as the `navigation` snapshot (FR-13); when
+ * the seam is absent an empty menu is committed.
  */
 export class SyncSite {
 	constructor(
@@ -109,8 +113,17 @@ export class SyncSite {
 		pages = bodies.pages;
 		warnings.push(...bodies.warnings);
 
-		// Commit snapshots AND pages in one atomic swap (FR-3, FR-12).
-		await this.writer.commit(snapshots, pages);
+		// Navigation (FR-13; D14): resolve the curated settings nav against the
+		// global route table's known routes — settings nav is authoritative, an
+		// off-site item becomes a label-with-warning. Pure decision; the resolved
+		// tree is committed in the same atomic swap as the snapshots + pages.
+		const navConfig = this.settings.readNavConfig?.() ?? { items: [] };
+		const nav = resolveNavigation(navConfig, bodies.knownRoutes);
+		warnings.push(...nav.warnings);
+
+		// Commit snapshots, pages, AND the navigation tree in one atomic swap
+		// (FR-3, FR-12, FR-13).
+		await this.writer.commit(snapshots, pages, nav.tree);
 
 		return { written: snapshots.length, pages: pages.length, warnings };
 	}

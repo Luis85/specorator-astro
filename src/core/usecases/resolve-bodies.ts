@@ -39,6 +39,12 @@ export interface ResolveBodiesResult {
 export interface ResolveSiteBodiesResult extends ResolveBodiesResult {
 	/** Standalone pages with their body `[[wikilinks]]` resolved to routes. */
 	pages: PageNode[];
+	/**
+	 * Every placed route in the global `[...slug]` namespace (listing/detail/page),
+	 * in placement order. Exposed so the caller can validate the curated navigation
+	 * against the *actual* site without rebuilding the table (FR-13).
+	 */
+	knownRoutes: string[];
 }
 
 /**
@@ -83,7 +89,12 @@ export function resolveSiteBodies(
 	}));
 	const outPages = pages.map((page) => resolvePageBody(page, table.resolve));
 
-	return { snapshots: outSnapshots, pages: outPages, warnings: table.warnings };
+	return {
+		snapshots: outSnapshots,
+		pages: outPages,
+		knownRoutes: table.routes.map((placed) => placed.route),
+		warnings: table.warnings,
+	};
 }
 
 /** Rewrite one standalone page's body wikilinks; a page without a body is unchanged. */
