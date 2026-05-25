@@ -132,6 +132,36 @@ title, isHome, frontmatter, body? }`). Its `route` joins the **global** route
   collection (entry id = the page `route`). The home page (`/`) renders via
   `index.astro`; non-home pages render through `[...slug].astro` and the `page`
   view — so the static `/` never collides with the dynamic catch-all.
+- **Navigation (curated menu)** — an **ordered, nestable** site menu curated in
+  settings (`NavConfig`: a tree of `NavItem` = `{ title, route?, children? }`).
+  The settings list is the **authoritative** source (D14); page-frontmatter
+  `nav` hints + folder structure are optional suggestions only (a documented
+  seam, not implemented as required). Curation edits are pure
+  (`core/navigation.ts`: `addNavItem`/`removeNavItem`/`moveNavItem`/
+  `updateNavItem`, addressing items by an index-trail `NavPath`); the settings
+  tab is the thin adapter, plus an **add-to-nav** command that appends the
+  active note (route derived via the page helpers).
+- **Navigation resolution** — the pure `resolveNavigation(navConfig, knownRoutes)`
+  (`core/navigation.ts`) folds the curated config into a resolved
+  **NavigationTree** (`NavNode` = `{ title, route?, children }`): it normalizes +
+  validates each route against the site's known routes (every placed
+  listing/detail/page route, exposed by `resolveSiteBodies`), keeps an off-site
+  item as a **label** (route cleared) with a warning — curation is never silently
+  lost — and drops blank-title items. `SyncSite` runs it and the writer commits
+  the tree to `data/navigation.json` in the **same atomic swap** as snapshots +
+  pages (FR-13).
+- **Breadcrumbs** — the ancestor trail for a route, `breadcrumbsFor(route, tree)`
+  (pure core, mirrored template-side in `src/theme/navigation.ts`): the chain of
+  resolved nodes from the top of the tree down to the matching node, with a
+  synthetic **home** crumb (`/`) leading every non-home trail; an off-menu route
+  falls back to just `[Home]`. `BaseLayout` renders the menu (`NavMenu.astro`,
+  recursive, `aria-current` on the active item) + breadcrumbs (`Breadcrumbs.astro`)
+  on **every** page from the `navigation` collection, so navigation is consistent
+  site-wide.
+- **Navigation loader** — the template's third Content Layer loader
+  (`navigationLoader` in `src/content/loader.ts`) that reads `data/navigation.json`,
+  validates the tree against `navigationTreeSchema`, and stores it under one fixed
+  id (`'site'`) so `BaseLayout` reads it once per page.
 - **Registry barrel** — the template's `src/registry.ts`, a single stable module
   mapping a component/layout **name** → an imported `.astro` component
   (`resolveView`/`resolveLayout`). The typed `theme/` defaults are the base; it
