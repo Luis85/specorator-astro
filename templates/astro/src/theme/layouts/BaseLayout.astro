@@ -1,18 +1,26 @@
 ---
 /*
  * specorator-template-version: 1
- * Template-owned default site layout. Replaced on plugin upgrade.
- * To customize without losing your work on upgrade, add a same-named layout
- * under src/user/layouts/ (it shadows this via the registry, FR-11a/FR-11j).
+ * Template-owned default site layout (docs/DESIGN.md §5.6, D9; NFR-10).
+ * Replaced on plugin upgrade. To customize without losing your work on upgrade,
+ * add a same-named layout under src/user/layouts/ (it shadows this via the
+ * registry, FR-11a/FR-11j), or redefine design tokens in src/user/theme.css.
+ *
+ * Token cascade (D9): the default tokens load FIRST and the user override sheet
+ * loads LAST, so any --sp-* redefined in src/user/theme.css wins with no
+ * component edits. Keep this import order.
  */
 import '../styles/tokens.css';
 import '../../user/theme.css';
 
 interface Props {
 	title?: string;
+	description?: string;
 }
 
-const { title = 'Specorator site' } = Astro.props;
+const { title = 'Specorator site', description } = Astro.props;
+const siteTitle = 'Specorator site';
+const fullTitle = title === siteTitle ? title : `${title} · ${siteTitle}`;
 ---
 
 <!doctype html>
@@ -20,25 +28,150 @@ const { title = 'Specorator site' } = Astro.props;
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>{title}</title>
+		<meta name="generator" content="Specorator (Astro)" />
+		<title>{fullTitle}</title>
+		{description && <meta name="description" content={description} />}
+		{/* Canonical / OpenGraph from a configured site URL is a C15 seam — not built here. */}
 	</head>
 	<body>
-		<main class="sp-shell">
-			<slot />
-		</main>
+		<a class="sp-skip-link" href="#sp-main">Skip to content</a>
+		<div class="sp-shell">
+			<header class="sp-site-header">
+				<a class="sp-site-title" href="/">{siteTitle}</a>
+				{/* Curated navigation renders here (C14). */}
+			</header>
+			<main id="sp-main" class="sp-main" tabindex="-1">
+				<slot />
+			</main>
+			<footer class="sp-site-footer">
+				<p>Published with Specorator</p>
+			</footer>
+		</div>
 	</body>
 </html>
 
 <style>
-	body {
+	:global(*),
+	:global(*::before),
+	:global(*::after) {
+		box-sizing: border-box;
+	}
+	:global(html) {
+		color-scheme: light dark;
+	}
+	:global(body) {
 		margin: 0;
+		min-height: 100vh;
 		background: var(--sp-color-bg);
 		color: var(--sp-color-fg);
 		font-family: var(--sp-font-body);
+		font-size: var(--sp-text-base);
+		line-height: var(--sp-line-height);
+		-webkit-font-smoothing: antialiased;
+		text-rendering: optimizeLegibility;
 	}
+	/* Token-driven defaults so view components inherit a coherent look. */
+	:global(a) {
+		color: var(--sp-color-accent);
+		text-decoration: none;
+	}
+	:global(a:hover) {
+		text-decoration: underline;
+	}
+	:global(h1),
+	:global(h2),
+	:global(h3),
+	:global(h4) {
+		line-height: var(--sp-line-height-tight);
+		color: var(--sp-color-fg);
+	}
+	:global(h1) {
+		font-size: var(--sp-text-2xl);
+	}
+	:global(h2) {
+		font-size: var(--sp-text-xl);
+	}
+	:global(h3) {
+		font-size: var(--sp-text-lg);
+	}
+	:global(img) {
+		max-width: 100%;
+		height: auto;
+	}
+	:global(code),
+	:global(pre) {
+		font-family: var(--sp-font-mono);
+		font-size: 0.9em;
+	}
+	/* Visible focus for every keyboard-focusable element (NFR-10). */
+	:global(:focus-visible) {
+		outline: 2px solid var(--sp-color-focus);
+		outline-offset: 2px;
+		border-radius: var(--sp-radius-sm);
+	}
+
+	.sp-skip-link {
+		position: absolute;
+		left: var(--sp-space-xs);
+		top: var(--sp-space-xs);
+		z-index: 10;
+		padding: var(--sp-space-2xs) var(--sp-space-xs);
+		background: var(--sp-color-accent);
+		color: var(--sp-color-on-accent);
+		border-radius: var(--sp-radius-sm);
+		transform: translateY(-150%);
+		transition: transform 0.15s ease;
+	}
+	.sp-skip-link:focus {
+		transform: translateY(0);
+		text-decoration: none;
+	}
+
 	.sp-shell {
+		display: flex;
+		flex-direction: column;
+		min-height: 100vh;
 		max-width: var(--sp-maxwidth);
 		margin: 0 auto;
-		padding: var(--sp-space);
+		padding: 0 var(--sp-space-md);
+	}
+	.sp-site-header {
+		display: flex;
+		align-items: center;
+		gap: var(--sp-space-md);
+		padding: var(--sp-space-md) 0;
+		border-bottom: 1px solid var(--sp-color-border);
+	}
+	.sp-site-title {
+		font-weight: 700;
+		font-size: var(--sp-text-lg);
+		color: var(--sp-color-fg);
+	}
+	.sp-site-title:hover {
+		text-decoration: none;
+		color: var(--sp-color-accent);
+	}
+	.sp-main {
+		flex: 1 1 auto;
+		padding: var(--sp-space-lg) 0;
+		outline: none;
+	}
+	.sp-site-footer {
+		padding: var(--sp-space-md) 0;
+		border-top: 1px solid var(--sp-color-border);
+		color: var(--sp-color-muted);
+		font-size: var(--sp-text-sm);
+	}
+	.sp-site-footer p {
+		margin: 0;
+	}
+
+	@media (max-width: 30rem) {
+		.sp-shell {
+			padding: 0 var(--sp-space-sm);
+		}
+		.sp-main {
+			padding: var(--sp-space-md) 0;
+		}
 	}
 </style>

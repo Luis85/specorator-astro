@@ -90,10 +90,11 @@ const coverProp = fields.find((field) => isImageProperty(field, imageProps));
 	.sp-cards-view {
 		display: flex;
 		flex-direction: column;
-		gap: var(--sp-space);
+		gap: var(--sp-space-lg);
 	}
 	.sp-group-heading {
-		margin: var(--sp-space) 0 0.5rem;
+		margin: 0 0 var(--sp-space-xs);
+		font-size: var(--sp-text-lg);
 		color: var(--sp-color-fg);
 	}
 	.sp-cards {
@@ -101,38 +102,53 @@ const coverProp = fields.find((field) => isImageProperty(field, imageProps));
 		margin: 0;
 		padding: 0;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
-		gap: var(--sp-space);
+		grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+		gap: var(--sp-space-md);
 	}
 	.sp-card {
-		border: 1px solid var(--sp-color-muted);
-		border-radius: var(--sp-radius);
-		padding: var(--sp-space);
+		display: flex;
+		flex-direction: column;
+		background: var(--sp-color-surface-raised);
+		border: 1px solid var(--sp-color-border);
+		border-radius: var(--sp-radius-lg);
+		padding: var(--sp-space-md);
+		box-shadow: var(--sp-shadow-sm);
+		transition:
+			box-shadow 0.15s ease,
+			border-color 0.15s ease;
+	}
+	.sp-card:hover {
+		box-shadow: var(--sp-shadow);
+		border-color: var(--sp-color-border-strong);
 	}
 	.sp-card-cover {
 		display: block;
 		width: 100%;
 		height: auto;
+		aspect-ratio: 16 / 9;
 		border-radius: var(--sp-radius);
-		margin-bottom: 0.5rem;
+		margin-bottom: var(--sp-space-sm);
 		object-fit: cover;
+		background: var(--sp-color-surface);
 	}
 	.sp-card-image {
 		max-width: 100%;
 		height: auto;
-		border-radius: var(--sp-radius);
+		border-radius: var(--sp-radius-sm);
 	}
 	.sp-card-title {
-		margin: 0 0 0.5rem;
+		margin: 0 0 var(--sp-space-xs);
+		font-size: var(--sp-text-lg);
 		color: var(--sp-color-fg);
 	}
 	.sp-card-fields {
 		margin: 0;
+		font-size: var(--sp-text-sm);
 	}
 	.sp-card-field {
 		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 0.25rem;
+		gap: var(--sp-space-xs);
+		margin-bottom: var(--sp-space-2xs);
 	}
 	.sp-card-field dt {
 		color: var(--sp-color-muted);
@@ -141,5 +157,6 @@ const coverProp = fields.find((field) => isImageProperty(field, imageProps));
 	}
 	.sp-card-field dd {
 		margin: 0;
+		color: var(--sp-color-fg);
 	}
 </style>
