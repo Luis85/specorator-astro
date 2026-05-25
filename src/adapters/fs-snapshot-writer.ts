@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { normalizePath } from 'obsidian';
-import type { ViewSnapshot } from '../core/domain/types';
+import type { PageNode, ViewSnapshot } from '../core/domain/types';
 import type { SnapshotWriterPort } from '../core/ports';
 
 /** Schema version of the on-disk data dir, bumped if the layout changes. */
@@ -16,6 +16,9 @@ const SNAPSHOTS_DIRNAME = 'snapshots';
 
 /** The manifest the C5 Content Layer loader reads to enumerate snapshots. */
 const INDEX_FILENAME = 'index.json';
+
+/** The standalone-pages manifest the template's page loader reads (FR-12). */
+const PAGES_FILENAME = 'pages.json';
 
 /** One entry in {@link SnapshotIndex.snapshots}. */
 interface SnapshotIndexEntry {
@@ -37,6 +40,17 @@ interface SnapshotIndex {
 }
 
 /**
+ * Shape of `<dataDir>/pages.json` — the standalone-pages manifest (FR-12; DESIGN
+ * §5.7). Consumed by the template's page loader (C13), which renders one route
+ * per page (the `isHome` page at `/`).
+ */
+interface PagesManifest {
+	version: number;
+	generatedAt: string;
+	pages: PageNode[];
+}
+
+/**
  * Writes snapshots into the Astro project's data directory (FR-3; DESIGN §5.2).
  *
  * On-disk layout (relative to the project dir passed to the constructor):
@@ -45,13 +59,15 @@ interface SnapshotIndex {
  * <projectDir>/data/
  *   index.json                  # manifest: { version, generatedAt, snapshots: [{ baseId, view, route, file }] }
  *   snapshots/<slug>.json       # one ViewSnapshot per file, slug derived from baseId
+ *   pages.json                  # standalone-pages manifest: { version, generatedAt, pages: PageNode[] }
  * ```
  *
  * The whole `data/` directory is **atomically replaced** on every `commit`:
- * the full set is staged in a sibling temp dir, fsynced, then swapped into
- * place. A commit that fails partway never leaves a half-written `data/` — the
- * previous directory stays intact (sequencing is owned by the writer, not the
- * caller). Writes go through Node `fs`; `normalizePath` is used for the
+ * the full set — snapshots AND standalone pages (FR-12) — is staged in a sibling
+ * temp dir, fsynced, then swapped into place in ONE atomic rename. A commit that
+ * fails partway never leaves a half-written `data/` — the previous directory
+ * (snapshots + pages together) stays intact (sequencing is owned by the writer,
+ * not the caller). Writes go through Node `fs`; `normalizePath` is used for the
  * vault-relative project path.
  */
 export class FsSnapshotWriter implements SnapshotWriterPort {
@@ -66,7 +82,7 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		this.tmpPrefix = path.join(normalizedProjectDir, '.data.tmp-');
 	}
 
-	async commit(snapshots: ViewSnapshot[]): Promise<void> {
+	async commit(snapshots: ViewSnapshot[], pages: PageNode[] = []): Promise<void> {
 		// Ensure the project dir exists so the sibling temp dir can be created.
 		await mkdir(path.dirname(this.dataDir), { recursive: true });
 
@@ -74,7 +90,7 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		//    the final swap can be an atomic rename, not a cross-device copy).
 		const stagingDir = await mkdtemp(this.tmpPrefix);
 		try {
-			await this.stage(stagingDir, snapshots);
+			await this.stage(stagingDir, snapshots, pages);
 		} catch (error) {
 			// Staging failed: discard the partial temp dir and leave the existing
 			// data dir untouched. Nothing was swapped, so it stays intact (or
@@ -87,8 +103,16 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		await this.swap(stagingDir);
 	}
 
-	/** Write every snapshot file plus the index into the staging dir and fsync. */
-	private async stage(stagingDir: string, snapshots: ViewSnapshot[]): Promise<void> {
+	/**
+	 * Write every snapshot file, the snapshot index, and the standalone-pages
+	 * manifest into the staging dir, then fsync — so the later atomic swap brings
+	 * snapshots AND pages over together (a single atomic set, FR-12).
+	 */
+	private async stage(
+		stagingDir: string,
+		snapshots: ViewSnapshot[],
+		pages: PageNode[],
+	): Promise<void> {
 		const snapshotsDir = path.join(stagingDir, SNAPSHOTS_DIRNAME);
 		await mkdir(snapshotsDir, { recursive: true });
 
@@ -116,6 +140,20 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		await writeFileSynced(
 			path.join(stagingDir, INDEX_FILENAME),
 			`${JSON.stringify(index, null, '\t')}\n`,
+		);
+
+		// Standalone pages (FR-12): one manifest committed in the SAME staged dir,
+		// so the atomic swap brings snapshots and pages over together. Always
+		// written (an empty `pages` array is a valid, complete manifest), so the
+		// template's page loader never sees a half-written or stale set.
+		const pagesManifest: PagesManifest = {
+			version: DATA_LAYOUT_VERSION,
+			generatedAt: index.generatedAt,
+			pages,
+		};
+		await writeFileSynced(
+			path.join(stagingDir, PAGES_FILENAME),
+			`${JSON.stringify(pagesManifest, null, '\t')}\n`,
 		);
 
 		// fsync the directory trees so the rename's effects survive a crash.

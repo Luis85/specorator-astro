@@ -3,7 +3,29 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FsSnapshotWriter } from '../../src/adapters/fs-snapshot-writer';
-import type { ViewSnapshot } from '../../src/core/domain/types';
+import type { PageNode, ViewSnapshot } from '../../src/core/domain/types';
+
+/** Build a minimal standalone page node for the given route. */
+function pageNode(route: string, isHome = false): PageNode {
+	return {
+		path: `Site/pages/${route.replace(/^\//, '') || 'index'}.md`,
+		route,
+		title: route,
+		isHome,
+		frontmatter: {},
+		body: { format: 'markdown', content: `Body for ${route}` },
+	};
+}
+
+interface PagesManifest {
+	version: number;
+	generatedAt: string;
+	pages: PageNode[];
+}
+
+async function readPages(dataDir: string): Promise<PagesManifest> {
+	return JSON.parse(await readFile(path.join(dataDir, 'pages.json'), 'utf8')) as PagesManifest;
+}
 
 /** Build a minimal, valid snapshot for the given base id / view name. */
 function snapshot(baseId: string, viewName = 'Default'): ViewSnapshot {
@@ -164,7 +186,7 @@ describe('FsSnapshotWriter (temp-dir contract)', () => {
 		expect(index.snapshots.map((e) => e.baseId)).toEqual(['first']);
 	});
 
-	it('commits an empty set as an empty, valid data dir', async () => {
+	it('commits an empty set as an empty, valid data dir (incl. an empty pages manifest)', async () => {
 		const writer = new FsSnapshotWriter(projectDir);
 		await writer.commit([]);
 
@@ -172,5 +194,58 @@ describe('FsSnapshotWriter (temp-dir contract)', () => {
 		expect(index.snapshots).toEqual([]);
 		const files = await readdir(path.join(dataDir, 'snapshots'));
 		expect(files).toEqual([]);
+
+		// pages.json is always written — an empty array is a valid, complete manifest.
+		const pages = await readPages(dataDir);
+		expect(pages.version).toBe(1);
+		expect(pages.pages).toEqual([]);
+	});
+
+	it('writes the standalone pages into pages.json alongside the snapshots (FR-12)', async () => {
+		const writer = new FsSnapshotWriter(projectDir);
+		await writer.commit(
+			[snapshot('Books/books.base', 'Reading')],
+			[pageNode('/', true), pageNode('/about')],
+		);
+
+		const pages = await readPages(dataDir);
+		expect(pages.pages.map((p) => p.route)).toEqual(['/', '/about']);
+		expect(pages.pages.find((p) => p.isHome)?.route).toBe('/');
+		// The snapshot set committed in the SAME atomic swap is intact too.
+		const index = await readIndex(dataDir);
+		expect(index.snapshots.map((e) => e.baseId)).toEqual(['Books/books.base']);
+	});
+
+	it('atomically REPLACES the previous pages with the new set (no merge)', async () => {
+		const writer = new FsSnapshotWriter(projectDir);
+		await writer.commit([], [pageNode('/'), pageNode('/about'), pageNode('/contact')]);
+		expect((await readPages(dataDir)).pages.map((p) => p.route)).toEqual([
+			'/',
+			'/about',
+			'/contact',
+		]);
+
+		// A later commit with a different page set replaces it wholesale.
+		await writer.commit([], [pageNode('/about')]);
+		expect((await readPages(dataDir)).pages.map((p) => p.route)).toEqual(['/about']);
+	});
+
+	it('leaves the previous pages manifest intact when a commit fails mid-stage', async () => {
+		const writer = new FsSnapshotWriter(projectDir);
+		await writer.commit([snapshot('keep')], [pageNode('/keep')]);
+		const before = await readPages(dataDir);
+
+		const exploding = snapshot('boom') as ViewSnapshot & { trap: unknown };
+		exploding.trap = {
+			toJSON() {
+				throw new Error('injected staging failure');
+			},
+		};
+		await expect(writer.commit([exploding], [pageNode('/new')])).rejects.toThrow(
+			'injected staging failure',
+		);
+
+		// The prior pages.json (and snapshots) are untouched — the swap never ran.
+		expect(await readPages(dataDir)).toEqual(before);
 	});
 });
