@@ -10,12 +10,15 @@
  * 1. build the global {@link RouteTable} from every snapshot's listing route +
  *    entries (the single source of truth for the `[...slug]` namespace), then
  * 2. rewrite each entry body's `[[wikilinks]]` to routes via the table's
- *    resolver ({@link resolveWikilinks}); off-site links and out-of-scope syntax
- *    (block refs / transclusions / Dataview) degrade gracefully (D8).
+ *    resolver ({@link resolveWikilinks}); an **off-site (unpublished) link**
+ *    becomes styled "not published" text and is surfaced in the returned
+ *    `warnings` (FR-24, D17) — it is NEVER auto-published; out-of-scope syntax
+ *    (block refs / transclusions / Dataview) degrades gracefully (D8).
  *
  * It is **pure**: no `obsidian`, no Node, no I/O. The harvester reads the raw
  * bodies (I/O) and attaches them to the snapshots; this pass only rewrites text
- * and returns the route-table warnings for the caller to surface.
+ * and returns the route-table + unpublished-link warnings for the caller to
+ * surface (via the same `warnings` channel `SyncSite` already bubbles up).
  */
 
 import {
@@ -24,15 +27,29 @@ import {
 	type RouteTablePage,
 	type RouteTableTarget,
 } from '../domain/route-table';
-import { resolveWikilinks } from '../domain/wikilinks';
+import { resolveWikilinks, type OffSiteLink } from '../domain/wikilinks';
 import type { EntryGroup, EntrySnapshot, PageNode, ViewSnapshot } from '../domain/types';
 
 /** The result of the body-resolution pass. */
 export interface ResolveBodiesResult {
 	/** Snapshots with every entry body's `[[wikilinks]]` resolved to routes. */
 	snapshots: ViewSnapshot[];
-	/** Non-fatal route-table warnings (collisions/disambiguations). */
+	/**
+	 * Non-fatal warnings: route-table collisions/disambiguations AND every
+	 * off-site (unpublished) `[[wikilink]]` rendered as "not published" text
+	 * (FR-24, D17). Each off-site warning names the link + its source note.
+	 */
 	warnings: string[];
+}
+
+/** Format one off-site link as a build warning naming its source note (FR-24). */
+function offSiteWarning(link: OffSiteLink, sourcePath: string): string {
+	const shown =
+		link.text === link.target ? `[[${link.target}]]` : `[[${link.target}|${link.text}]]`;
+	return (
+		`Unpublished link ${shown} in ${sourcePath} points to a note that is not on ` +
+		`the site; it renders as "not published" text (the target was not published).`
+	);
 }
 
 /** The result of resolving snapshot AND standalone-page bodies (FR-12; C13). */
@@ -83,52 +100,68 @@ export function resolveSiteBodies(
 
 	const table = buildRouteTable(targets, routePages);
 
+	// Off-site (unpublished) `[[wikilinks]]` are collected here as the bodies are
+	// resolved, each formatted as a warning naming its source note (FR-24, D17).
+	// They are surfaced via the SAME `warnings` channel as route-table collisions
+	// (which `SyncSite` already bubbles up) — never auto-published.
+	const offSiteWarnings: string[] = [];
+
 	const outSnapshots = snapshots.map((snapshot) => ({
 		...snapshot,
-		groups: snapshot.groups.map((group) => resolveGroupBodies(group, table.resolve)),
+		groups: snapshot.groups.map((group) =>
+			resolveGroupBodies(group, table.resolve, offSiteWarnings),
+		),
 	}));
-	const outPages = pages.map((page) => resolvePageBody(page, table.resolve));
+	const outPages = pages.map((page) => resolvePageBody(page, table.resolve, offSiteWarnings));
 
 	return {
 		snapshots: outSnapshots,
 		pages: outPages,
 		knownRoutes: table.routes.map((placed) => placed.route),
-		warnings: table.warnings,
+		warnings: [...table.warnings, ...offSiteWarnings],
 	};
 }
 
 /** Rewrite one standalone page's body wikilinks; a page without a body is unchanged. */
-function resolvePageBody(page: PageNode, resolve: RouteResolver): PageNode {
+function resolvePageBody(page: PageNode, resolve: RouteResolver, warnings: string[]): PageNode {
 	if (page.body === undefined) {
 		return page;
 	}
+	const onOffSite = (link: OffSiteLink): void => {
+		warnings.push(offSiteWarning(link, page.path));
+	};
 	return {
 		...page,
-		body: { ...page.body, content: resolveWikilinks(page.body.content, resolve) },
+		body: { ...page.body, content: resolveWikilinks(page.body.content, resolve, onOffSite) },
 	};
 }
 
 /** Resolve the bodies of every entry in one group. */
 function resolveGroupBodies(
 	group: EntryGroup,
-	resolve: (target: string) => string | null,
+	resolve: RouteResolver,
+	warnings: string[],
 ): EntryGroup {
 	return {
 		...group,
-		entries: group.entries.map((entry) => resolveEntryBody(entry, resolve)),
+		entries: group.entries.map((entry) => resolveEntryBody(entry, resolve, warnings)),
 	};
 }
 
 /** Rewrite one entry body's wikilinks; entries without a body are unchanged. */
 function resolveEntryBody(
 	entry: EntrySnapshot,
-	resolve: (target: string) => string | null,
+	resolve: RouteResolver,
+	warnings: string[],
 ): EntrySnapshot {
 	if (entry.body === undefined) {
 		return entry;
 	}
+	const onOffSite = (link: OffSiteLink): void => {
+		warnings.push(offSiteWarning(link, entry.path));
+	};
 	return {
 		...entry,
-		body: { ...entry.body, content: resolveWikilinks(entry.body.content, resolve) },
+		body: { ...entry.body, content: resolveWikilinks(entry.body.content, resolve, onOffSite) },
 	};
 }

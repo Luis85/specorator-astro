@@ -50,12 +50,38 @@ describe('resolveSnapshotBodies', () => {
 		);
 	});
 
-	it('degrades an off-site wikilink to plain text (graceful, D8)', () => {
+	it('renders an off-site wikilink as styled "not published" text (FR-24, D17)', () => {
 		const snaps = [
 			snapshot('/books', [entry('Books/Dune.md', 'Dune', 'See [[Private Note]].')]),
 		];
 		const { snapshots } = resolveSnapshotBodies(snaps);
-		expect(snapshots[0]?.groups[0]?.entries[0]?.body?.content).toBe('See Private Note.');
+		const content = snapshots[0]?.groups[0]?.entries[0]?.body?.content ?? '';
+		expect(content).toContain('class="sp-unpublished"');
+		expect(content).toContain('>Private Note</span>');
+		expect(content).not.toContain('href=');
+	});
+
+	it('surfaces each off-site wikilink in warnings naming its source note (FR-24)', () => {
+		const snaps = [
+			snapshot('/books', [entry('Books/Dune.md', 'Dune', 'See [[Private Note]].')]),
+		];
+		const { warnings } = resolveSnapshotBodies(snaps);
+		const offSite = warnings.filter((w) => w.includes('Unpublished link'));
+		expect(offSite).toHaveLength(1);
+		expect(offSite[0]).toContain('[[Private Note]]');
+		expect(offSite[0]).toContain('Books/Dune.md');
+	});
+
+	it('NEVER auto-publishes an off-site target: the known route set is unchanged', () => {
+		const withLink = [
+			snapshot('/books', [entry('Books/Dune.md', 'Dune', 'See [[Private Note]].')]),
+		];
+		const withoutLink = [snapshot('/books', [entry('Books/Dune.md', 'Dune')])];
+		const a = resolveSiteBodies(withLink, []);
+		const b = resolveSiteBodies(withoutLink, []);
+		// The off-site link added NO route — the namespace is identical with/without it.
+		expect(a.knownRoutes).toEqual(b.knownRoutes);
+		expect(a.knownRoutes).not.toContain('/private-note');
 	});
 
 	it('leaves entries without a body unchanged', () => {
@@ -117,10 +143,17 @@ describe('resolveSiteBodies', () => {
 		expect(out[0]).not.toHaveProperty('body');
 	});
 
-	it('degrades an off-site page link to plain text (graceful, D8)', () => {
+	it('renders an off-site page link as "not published" text + warns naming the page', () => {
 		const pages = [page('Site/pages/About.md', '/about', 'See [[Nowhere]].')];
-		const { pages: out } = resolveSiteBodies([], pages);
-		expect(out[0]?.body?.content).toBe('See Nowhere.');
+		const { pages: out, warnings } = resolveSiteBodies([], pages);
+		const content = out[0]?.body?.content ?? '';
+		expect(content).toContain('class="sp-unpublished"');
+		expect(content).toContain('>Nowhere</span>');
+		expect(content).not.toContain('href=');
+		const offSite = warnings.filter((w) => w.includes('Unpublished link'));
+		expect(offSite).toHaveLength(1);
+		expect(offSite[0]).toContain('[[Nowhere]]');
+		expect(offSite[0]).toContain('Site/pages/About.md');
 	});
 
 	it('surfaces a page-vs-listing route collision as a warning', () => {

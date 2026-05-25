@@ -24,7 +24,7 @@
 					},
 					"body": {
 						"format": "markdown",
-						"content": "Set on Arrakis. See also [Neuromancer](/books/neuromancer).\n\n> [!note] Spice\n> The spice must flow.\n\nUnresolved block ref [[Dune#^missing]] and a Dataview block:\n\n```dataview\nTABLE file.name FROM \"Books\"\n```\n"
+						"content": "Set on Arrakis. See also [Neuromancer](/books/neuromancer). Mentions <span class=\"sp-unpublished\" data-unpublished-link=\"Private Note\" title=\"Not published: Private Note\">Private Note</span> which is not published.\n\n> [!note] Spice\n> The spice must flow.\n\nUnresolved block ref [[Dune#^missing]] and a Dataview block:\n\n```dataview\nTABLE file.name FROM \"Books\"\n```\n"
 					}
 				}
 			]

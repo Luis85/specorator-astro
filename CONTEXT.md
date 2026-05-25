@@ -224,10 +224,19 @@ viewName)` is stored in the plugin settings as the optional
 - **Wikilink resolver** — the pure `[[wikilink]]` rewriter (`wikilinks.ts`,
   `resolveWikilinks`; FR-15, D8). DESIGN §5.7 mandates wikilinks resolve in the
   harvester **against the route table, not at render time**: on-site links
-  become markdown links to routes; off-site links degrade to plain text (C16
-  styles them later). Image embeds (`![[…]]`) are left to the asset pipeline;
-  block refs / transclusions / Dataview are **out of scope** and pass through
-  (never throw).
+  become markdown links to routes; off-site (unpublished) links become the
+  **unpublished-link marker** (below). Image embeds (`![[…]]`) are left to the
+  asset pipeline; block refs / transclusions / Dataview are **out of scope** and
+  pass through (never throw).
+- **Unpublished link / not-published marker** — an off-site `[[wikilink]]` (its
+  target is not on the site) resolves to an inline raw-HTML
+  `<span class="sp-unpublished">` instead of an `<a>` (FR-24, D17; C16). It is
+  visibly-distinct, **non-clickable** "not published" text the body pipeline
+  passes through and the global token sheet styles. Off-site targets are
+  **NEVER** auto-published (privacy-safe): the resolver only ever maps to a route
+  the table already placed. Each off-site link is collected (`OffSiteLink` →
+  `onOffSite` sink) and surfaced as a build **warning** naming the link + its
+  source note, via the same `warnings` channel `SyncSite` bubbles up.
 - **Detail page** — the per-entry route (`/books/dune`) rendering the entry's
   values + note **body** at core fidelity (FR-21, D8). The template's
   `[...slug].astro` `getStaticPaths` emits one per entry alongside the listings;

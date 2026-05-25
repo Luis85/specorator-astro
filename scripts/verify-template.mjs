@@ -215,8 +215,24 @@ async function assertDetailRoutes(dist) {
 	assertIncludes(duneHtml, 'data-callout="note"', '/books/dune callout');
 	assertIncludes(duneHtml, 'class="sp-callout-title"', '/books/dune callout title');
 	assertIncludes(duneHtml, 'The spice must flow.', '/books/dune callout body');
-	// The wikilink (resolved to a route by the plugin before write) links out.
-	assertIncludes(duneHtml, 'href="/books/neuromancer"', '/books/dune resolved wikilink');
+	// The on-site wikilink (resolved to a route by the plugin before write) is a
+	// real link out to the target's detail route.
+	assertIncludes(duneHtml, 'href="/books/neuromancer"', '/books/dune resolved on-site wikilink');
+	// C16 (FR-24, D17): an OFF-SITE `[[wikilink]]` was resolved by the plugin to a
+	// styled, NON-clickable "not published" marker — a <span class="sp-unpublished">,
+	// NOT an <a href>. Assert the marker shipped with its visible text, and that the
+	// off-site target is never linked (no href to a /private-note route exists).
+	assertIncludes(duneHtml, 'class="sp-unpublished"', '/books/dune off-site wikilink marker');
+	assertIncludes(duneHtml, '>Private Note</span>', '/books/dune off-site wikilink text');
+	if (duneHtml.includes('href="/private-note"') || duneHtml.includes('>Private Note</a>')) {
+		throw new Error(
+			'/books/dune: an off-site wikilink rendered as a clickable link — it must be ' +
+				'non-clickable "not published" text (FR-24, privacy-safe).',
+		);
+	}
+	// The .sp-unpublished marker is styled (the global token sheet ships a rule for it).
+	const dCss = await readBundledCss(dist);
+	assertIncludes(dCss, '.sp-unpublished', '/books/dune off-site marker styled');
 	// Graceful degradation (D8): the unresolved block ref + Dataview block ship as
 	// passed-through content; their presence proves the build did not fail on them.
 	assertIncludes(duneHtml, '#^missing', '/books/dune block-ref degraded (no crash)');

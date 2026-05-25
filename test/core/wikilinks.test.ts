@@ -35,15 +35,48 @@ describe('resolveWikilinks — on-site links', () => {
 	});
 });
 
-describe('resolveWikilinks — off-site / graceful degradation (D8)', () => {
-	it('leaves an unpublished link as plain display text (C16 styles it later)', () => {
-		expect(resolveWikilinks('See [[Unpublished Note]].', resolve)).toBe(
-			'See Unpublished Note.',
+describe('resolveWikilinks — off-site / unpublished (FR-24, D17)', () => {
+	it('renders an unpublished link as styled "not published" text, NOT a link', () => {
+		const out = resolveWikilinks('See [[Unpublished Note]].', resolve);
+		expect(out).toBe(
+			'See <span class="sp-unpublished" data-unpublished-link="Unpublished Note" ' +
+				'title="Not published: Unpublished Note">Unpublished Note</span>.',
+		);
+		// It is NEVER an <a href> — visibly distinct but non-clickable.
+		expect(out).not.toContain('href=');
+		expect(out).not.toContain('](');
+	});
+
+	it('uses the alias as the visible "not published" text for an off-site aliased link', () => {
+		const out = resolveWikilinks('[[Secret|hidden]]', resolve);
+		expect(out).toBe(
+			'<span class="sp-unpublished" data-unpublished-link="Secret" ' +
+				'title="Not published: Secret">hidden</span>',
 		);
 	});
 
-	it('uses the alias as plain text for an off-site aliased link', () => {
-		expect(resolveWikilinks('[[Secret|hidden]]', resolve)).toBe('hidden');
+	it('reports each off-site link to the onOffSite sink (target + visible text)', () => {
+		const seen: { target: string; text: string }[] = [];
+		resolveWikilinks('[[Secret|hidden]] and [[Other]]', resolve, (link) => seen.push(link));
+		expect(seen).toEqual([
+			{ target: 'Secret', text: 'hidden' },
+			{ target: 'Other', text: 'Other' },
+		]);
+	});
+
+	it('does NOT report an on-site link to the onOffSite sink', () => {
+		const seen: { target: string; text: string }[] = [];
+		resolveWikilinks('[[Dune]]', resolve, (link) => seen.push(link));
+		expect(seen).toEqual([]);
+	});
+
+	it('HTML-escapes the visible text and target attribute in the marker', () => {
+		const out = resolveWikilinks('[[A & B <c>|x "y" <z>]]', resolve);
+		expect(out).toBe(
+			'<span class="sp-unpublished" data-unpublished-link="A &amp; B &lt;c&gt;" ' +
+				'title="Not published: A &amp; B &lt;c&gt;">x &quot;y&quot; &lt;z&gt;</span>',
+		);
+		expect(out).not.toContain('href=');
 	});
 
 	it('does not touch an image embed (![[…]]) — asset pipeline owns it', () => {

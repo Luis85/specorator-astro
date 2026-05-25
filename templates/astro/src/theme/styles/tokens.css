@@ -95,6 +95,18 @@
 	}
 }
 
+/* Unpublished `[[wikilink]]` marker (FR-24, D17; DESIGN §5.7). An off-site link
+ * is resolved by the plugin to an inline <span class="sp-unpublished"> instead of
+ * an <a>, so it reads as visibly-distinct, NON-clickable "not published" text. A
+ * global rule (this sheet ships site-wide) so it applies inside any rendered body
+ * — detail pages and standalone pages alike. The off-site target is NEVER linked. */
+.sp-unpublished {
+	color: var(--sp-color-muted);
+	text-decoration: underline dotted var(--sp-color-border-strong);
+	text-underline-offset: 0.15em;
+	cursor: not-allowed;
+}
+
 /* Explicit dark mode (force regardless of OS), e.g. <html data-theme="dark">. */
 :root[data-theme='dark'] {
 	--sp-color-bg: #0e1117;
