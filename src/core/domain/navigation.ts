@@ -50,6 +50,146 @@ export interface NavConfig {
 }
 
 /**
+ * A path that addresses one item in the (possibly nested) curated list: the
+ * index trail from the top-level list down to the item (e.g. `[1, 0]` is the
+ * first child of the second top-level item). Used by the pure curation helpers
+ * below so the settings UI can edit a deep item without re-implementing the
+ * tree walk. An empty path addresses the top-level list itself.
+ */
+export type NavPath = readonly number[];
+
+/**
+ * Append `item` to the children of the item at `parentPath` (or to the top-level
+ * list when the path is empty), returning a NEW config (pure — the input is not
+ * mutated). An out-of-range path is a no-op (returns a structural copy), so a
+ * stale UI action can never corrupt the menu. The single seam the settings tab's
+ * "add item" / "add child" / "add to nav" affordances drive (FR-13; D14).
+ */
+export function addNavItem(config: NavConfig, parentPath: NavPath, item: NavItem): NavConfig {
+	const next = cloneItems(config.items);
+	if (parentPath.length === 0) {
+		next.push(cloneItem(item));
+		return { items: next };
+	}
+	const parent = itemAt(next, parentPath);
+	if (parent === null) {
+		return { items: next };
+	}
+	parent.children = [...(parent.children ?? []), cloneItem(item)];
+	return { items: next };
+}
+
+/**
+ * Remove the item at `path`, returning a NEW config. An out-of-range path is a
+ * no-op. Removing an item removes its whole subtree (its children go with it).
+ */
+export function removeNavItem(config: NavConfig, path: NavPath): NavConfig {
+	const next = cloneItems(config.items);
+	const { list, index } = locate(next, path);
+	if (list !== null && index >= 0 && index < list.length) {
+		list.splice(index, 1);
+	}
+	return { items: next };
+}
+
+/**
+ * Move the item at `path` one slot earlier (`-1`) or later (`+1`) within its
+ * sibling list, returning a NEW config. A move that would leave the bounds of
+ * the sibling list is a no-op, so the first/last items stay put. The seam the
+ * settings tab's reorder (up/down) buttons drive.
+ */
+export function moveNavItem(config: NavConfig, path: NavPath, delta: number): NavConfig {
+	const next = cloneItems(config.items);
+	const { list, index } = locate(next, path);
+	if (list === null) {
+		return { items: next };
+	}
+	const target = index + delta;
+	if (index < 0 || index >= list.length || target < 0 || target >= list.length) {
+		return { items: next };
+	}
+	const [moved] = list.splice(index, 1);
+	list.splice(target, 0, moved);
+	return { items: next };
+}
+
+/**
+ * Update the title and/or route of the item at `path`, returning a NEW config.
+ * A blank/whitespace `route` clears the route (the item becomes a label). An
+ * out-of-range path is a no-op.
+ */
+export function updateNavItem(
+	config: NavConfig,
+	path: NavPath,
+	patch: { title?: string; route?: string },
+): NavConfig {
+	const next = cloneItems(config.items);
+	const item = itemAt(next, path);
+	if (item === null) {
+		return { items: next };
+	}
+	if (patch.title !== undefined) {
+		item.title = patch.title;
+	}
+	if (patch.route !== undefined) {
+		const trimmed = patch.route.trim();
+		if (trimmed === '') {
+			delete item.route;
+		} else {
+			item.route = trimmed;
+		}
+	}
+	return { items: next };
+}
+
+/** Deep-clone one nav item (so curation helpers never mutate their input). */
+function cloneItem(item: NavItem): NavItem {
+	const copy: NavItem = { title: item.title };
+	if (item.route !== undefined) {
+		copy.route = item.route;
+	}
+	if (item.children !== undefined) {
+		copy.children = cloneItems(item.children);
+	}
+	return copy;
+}
+
+/** Deep-clone a list of nav items. */
+function cloneItems(items: readonly NavItem[]): NavItem[] {
+	return items.map(cloneItem);
+}
+
+/** The item addressed by `path`, or `null` when the path is out of range. */
+function itemAt(items: NavItem[], path: NavPath): NavItem | null {
+	const { list, index } = locate(items, path);
+	if (list === null || index < 0 || index >= list.length) {
+		return null;
+	}
+	return list[index];
+}
+
+/**
+ * Resolve `path` to the sibling list that contains the addressed item and the
+ * item's index within it. Returns `{ list: null, index: -1 }` when any ancestor
+ * step is out of range. An empty path is invalid (it addresses no single item).
+ */
+function locate(items: NavItem[], path: NavPath): { list: NavItem[] | null; index: number } {
+	if (path.length === 0) {
+		return { list: null, index: -1 };
+	}
+	let list = items;
+	for (let depth = 0; depth < path.length - 1; depth += 1) {
+		const step = path[depth];
+		const child = list[step]?.children;
+		if (child === undefined) {
+			return { list: null, index: -1 };
+		}
+		list = child;
+	}
+	return { list, index: path[path.length - 1] };
+}
+
+/**
  * One resolved navigation node in the committed {@link NavigationTree}. A node
  * carries a normalized `route` only when that route is **on the site** (known);
  * an item pointing nowhere or off-site keeps `route: undefined` and renders as a

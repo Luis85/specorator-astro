@@ -4,6 +4,15 @@ import type { RegistryPort } from '../core/ports';
 import type { PublishTarget } from '../core/domain/types';
 import { DEFAULT_DEV_PORT } from '../core/domain/settings-migration';
 import {
+	addNavItem,
+	moveNavItem,
+	removeNavItem,
+	updateNavItem,
+	type NavConfig,
+	type NavItem,
+	type NavPath,
+} from '../core/domain/navigation';
+import {
 	AUTO,
 	availableNames,
 	resolveRegistry,
@@ -140,6 +149,7 @@ export class SiteSettingTab extends PluginSettingTab {
 		);
 
 		this.displayPages(containerEl);
+		this.displayNavigation(containerEl);
 		this.displayComponentLibrary(containerEl);
 		this.displaySyncTriggers(containerEl);
 		this.displayToolchain(containerEl);
@@ -172,6 +182,131 @@ export class SiteSettingTab extends PluginSettingTab {
 						});
 					}),
 			);
+	}
+
+	/**
+	 * Navigation section (FR-13; D14). Curate the ordered, nestable site menu: each
+	 * item has a title and an optional target route (a page/collection route; blank
+	 * → a structural label/group). Add top-level items or children, reorder with the
+	 * up/down buttons, and remove items. The curation **decisions** are the pure
+	 * `core/navigation` helpers (`addNavItem`/`moveNavItem`/`removeNavItem`/
+	 * `updateNavItem`); this method is the thin Obsidian adapter that renders them
+	 * and persists each edit. The nav is resolved against the route table at sync
+	 * time into the committed `navigation` snapshot — so an unknown route here is
+	 * harmless (it renders as a label, with a sync warning).
+	 */
+	private displayNavigation(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Navigation').setHeading();
+
+		new Setting(containerEl).setDesc(
+			'Curated site menu shown on every page (with breadcrumbs). Items are ordered top to bottom and can be nested. Set a target route to make an item a link; leave it blank for a section label. An unknown route renders as a label.',
+		);
+
+		const nav = this.store.readNavConfig();
+		this.renderNavItems(containerEl, nav, nav.items, []);
+
+		new Setting(containerEl).addButton((button) =>
+			button
+				.setButtonText('Add nav item')
+				.setCta()
+				.onClick(() => {
+					this.editNav((current) => addNavItem(current, [], { title: 'New item' }));
+					this.display();
+				}),
+		);
+	}
+
+	/**
+	 * Recursively render one sibling list of nav items at `parentPath`, indenting
+	 * nested levels so the tree structure reads at a glance. Each row exposes a
+	 * title + target-route input, reorder (up/down), add-child, and remove. Every
+	 * mutation routes through a pure `core/navigation` helper and re-renders.
+	 */
+	private renderNavItems(
+		containerEl: HTMLElement,
+		nav: NavConfig,
+		items: readonly NavItem[],
+		parentPath: NavPath,
+	): void {
+		items.forEach((item, index) => {
+			const path: number[] = [...parentPath, index];
+			const depth = parentPath.length;
+			const setting = new Setting(containerEl)
+				.setName(`${'— '.repeat(depth)}${item.title || '(untitled)'}`)
+				.addText((text) =>
+					text
+						.setPlaceholder('Title')
+						.setValue(item.title)
+						.onChange((value) => {
+							this.editNav((current) =>
+								updateNavItem(current, path, { title: value }),
+							);
+						}),
+				)
+				.addText((text) =>
+					text
+						.setPlaceholder('/route (blank = label)')
+						.setValue(item.route ?? '')
+						.onChange((value) => {
+							this.editNav((current) =>
+								updateNavItem(current, path, { route: value }),
+							);
+						}),
+				);
+
+			setting.addExtraButton((button) =>
+				button
+					.setIcon('chevron-up')
+					.setTooltip('Move up')
+					.onClick(() => {
+						this.editNav((current) => moveNavItem(current, path, -1));
+						this.display();
+					}),
+			);
+			setting.addExtraButton((button) =>
+				button
+					.setIcon('chevron-down')
+					.setTooltip('Move down')
+					.onClick(() => {
+						this.editNav((current) => moveNavItem(current, path, +1));
+						this.display();
+					}),
+			);
+			setting.addExtraButton((button) =>
+				button
+					.setIcon('corner-down-right')
+					.setTooltip('Add sub-item')
+					.onClick(() => {
+						this.editNav((current) => addNavItem(current, path, { title: 'New item' }));
+						this.display();
+					}),
+			);
+			setting.addExtraButton((button) =>
+				button
+					.setIcon('trash')
+					.setTooltip('Remove this item')
+					.onClick(() => {
+						this.editNav((current) => removeNavItem(current, path));
+						this.display();
+					}),
+			);
+
+			// Render this item's children one level deeper.
+			if (item.children !== undefined && item.children.length > 0) {
+				this.renderNavItems(containerEl, nav, item.children, path);
+			}
+		});
+	}
+
+	/**
+	 * Apply a pure curation transform to the persisted nav config and schedule a
+	 * debounced save. Re-reads the current config inside `edit` so concurrent text
+	 * edits compose correctly.
+	 */
+	private editNav(transform: (config: NavConfig) => NavConfig): void {
+		this.store.edit((settings) => {
+			settings.nav = transform(settings.nav);
+		});
 	}
 
 	/**

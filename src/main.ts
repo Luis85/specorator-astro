@@ -9,6 +9,7 @@ import {
 	normalizePath,
 } from 'obsidian';
 import type { AstroProcessPort, BuildExportPort } from './core/ports';
+import type { CellValue } from './core/domain/types';
 import { LiveResyncTrigger } from './core/domain/live-resync';
 import { UserFacingError } from './core/domain/errors';
 import { BuildSite } from './core/usecases/build-site';
@@ -22,6 +23,8 @@ import {
 	type ComponentNoteStub,
 } from './core/domain/component-note-stub';
 import { isComponentLibraryNote } from './core/domain/component-transpile';
+import { addNavItem } from './core/domain/navigation';
+import { derivePageRoute, isDesignatedPage, isHomeDesignation } from './core/domain/pages';
 import { AssetSourceAdapter } from './adapters/asset-source-adapter';
 import { AstroProcessAdapter } from './adapters/astro-process-adapter';
 import { BasesHarvesterAdapter } from './adapters/bases-harvester-adapter';
@@ -254,8 +257,63 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 			},
 		});
 
+		// Add-to-nav helper (FR-13; D14): append the active note to the curated
+		// navigation. For a designated page the target route is derived with the
+		// same pure rule the sync uses; otherwise the note's basename seeds a
+		// placeholder route the user can refine. The curation decision is the pure
+		// `addNavItem`; this command only feeds it the active file + settings.
+		this.addCommand({
+			id: 'add-to-nav',
+			name: 'Add current note to navigation',
+			callback: () => {
+				this.addActiveNoteToNav(settings);
+			},
+		});
+
 		this.registerComponentMenus(settings);
 		this.registerLiveResync(settings, sync);
+	}
+
+	/**
+	 * Append the active note to the curated navigation menu (FR-13). Reads the
+	 * note's frontmatter from the metadata cache to decide a sensible target
+	 * route — a designated page uses its derived page route, any other note uses
+	 * its slugified basename — then folds it into the nav with the pure
+	 * `addNavItem`. The route is validated against the real site at the next sync
+	 * (an unknown route becomes a label with a warning), so this never has to be
+	 * exact. Surfaces the result as a Notice.
+	 */
+	private addActiveNoteToNav(settings: SettingsStore): void {
+		const file = this.app.workspace.getActiveFile();
+		if (file === null) {
+			new Notice('Specorator: open a note first to add it to the navigation.');
+			return;
+		}
+
+		const rawFrontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+		const frontmatter = toCellValueRecord(rawFrontmatter);
+		const { pagesFolder, libraryFolder } = settings.readPageFolders();
+
+		let route: string;
+		if (isDesignatedPage(file.path, frontmatter, pagesFolder, libraryFolder)) {
+			const isHome = isHomeDesignation(file.path, frontmatter, pagesFolder);
+			route = derivePageRoute(file.path, frontmatter, pagesFolder, isHome);
+		} else {
+			// Not (yet) a designated page: seed a slug from the basename so the user
+			// has a starting point; sync validation will flag it if it never exists.
+			route = `/${file.basename
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, '-')
+				.replace(/^-+|-+$/g, '')}`;
+		}
+
+		const title = typeof frontmatter.title === 'string' ? frontmatter.title : file.basename;
+		settings.edit((current) => {
+			current.nav = addNavItem(current.nav, [], { title, route });
+		});
+		new Notice(
+			`Specorator: added "${title}" (${route}) to the navigation. Refine it in settings, then sync.`,
+		);
 	}
 
 	/**
@@ -451,5 +509,44 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 	override onunload(): void {
 		// Obsidian's onunload is synchronous; fire-and-forget the process teardown.
 		void this.astro?.stop();
+	}
+}
+
+/**
+ * Narrow Obsidian's loosely-typed frontmatter record to the JSON-serializable
+ * {@link CellValue} subset the pure page-designation helpers consume (mirrors the
+ * page-loader adapter's coercion). Only used by the add-to-nav helper, which
+ * needs the note's title/route/flag hints; non-scalar values are stringified so
+ * the decision logic still sees a usable value.
+ */
+function toCellValueRecord(raw: Record<string, unknown>): Record<string, CellValue> {
+	const out: Record<string, CellValue> = {};
+	for (const [key, value] of Object.entries(raw)) {
+		out[key] = toCellValue(value);
+	}
+	return out;
+}
+
+/** Coerce one frontmatter value to the JSON-serializable {@link CellValue} subset. */
+function toCellValue(value: unknown): CellValue {
+	if (value === null || value === undefined) return null;
+	if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+		return value;
+	}
+	if (Array.isArray(value)) {
+		return value.map(scalarString);
+	}
+	return scalarString(value);
+}
+
+/** String form of a non-scalar frontmatter value (objects → JSON, never `[object Object]`). */
+function scalarString(value: unknown): string {
+	if (typeof value === 'string') return value;
+	if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+	if (value === null || value === undefined) return '';
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return '';
 	}
 }

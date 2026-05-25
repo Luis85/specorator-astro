@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+	addNavItem,
 	breadcrumbsFor,
 	emptyNavigationTree,
+	moveNavItem,
+	removeNavItem,
 	resolveNavigation,
+	updateNavItem,
 	type NavConfig,
 	type NavigationTree,
 } from '../../src/core/domain/navigation';
@@ -184,5 +188,84 @@ describe('breadcrumbsFor', () => {
 		};
 		const trail = breadcrumbsFor('/dup', dup);
 		expect(trail.map((c) => c.title)).toEqual(['Home', 'First']);
+	});
+});
+
+describe('curation helpers (pure config edits)', () => {
+	const base: NavConfig = {
+		items: [
+			{ title: 'Books', route: '/books' },
+			{ title: 'Library', children: [{ title: 'Films', route: '/films' }] },
+		],
+	};
+
+	it('addNavItem appends to the top-level list without mutating the input', () => {
+		const next = addNavItem(base, [], { title: 'About', route: '/about' });
+		expect(next.items.map((i) => i.title)).toEqual(['Books', 'Library', 'About']);
+		// The input is untouched (pure).
+		expect(base.items).toHaveLength(2);
+	});
+
+	it('addNavItem appends a child to a parent at a path', () => {
+		const next = addNavItem(base, [1], { title: 'Tasks', route: '/tasks' });
+		expect(next.items[1].children?.map((c) => c.title)).toEqual(['Films', 'Tasks']);
+	});
+
+	it('addNavItem creates a children list for a leaf parent', () => {
+		const next = addNavItem(base, [0], { title: 'Dune', route: '/books/dune' });
+		expect(next.items[0].children?.map((c) => c.title)).toEqual(['Dune']);
+	});
+
+	it('addNavItem is a no-op for an out-of-range parent path', () => {
+		const next = addNavItem(base, [9], { title: 'Ghost' });
+		expect(next.items.map((i) => i.title)).toEqual(['Books', 'Library']);
+	});
+
+	it('removeNavItem drops a top-level item and its subtree', () => {
+		const next = removeNavItem(base, [1]);
+		expect(next.items.map((i) => i.title)).toEqual(['Books']);
+	});
+
+	it('removeNavItem drops a nested child', () => {
+		const next = removeNavItem(base, [1, 0]);
+		expect(next.items[1].children).toEqual([]);
+	});
+
+	it('removeNavItem is a no-op for an out-of-range or empty path', () => {
+		expect(removeNavItem(base, [9]).items).toHaveLength(2);
+		expect(removeNavItem(base, []).items).toHaveLength(2);
+		expect(removeNavItem(base, [5, 0]).items).toHaveLength(2);
+	});
+
+	it('moveNavItem reorders within the sibling list', () => {
+		const down = moveNavItem(base, [0], +1);
+		expect(down.items.map((i) => i.title)).toEqual(['Library', 'Books']);
+		const up = moveNavItem(down, [1], -1);
+		expect(up.items.map((i) => i.title)).toEqual(['Books', 'Library']);
+	});
+
+	it('moveNavItem clamps at the bounds (first up / last down are no-ops)', () => {
+		expect(moveNavItem(base, [0], -1).items.map((i) => i.title)).toEqual(['Books', 'Library']);
+		expect(moveNavItem(base, [1], +1).items.map((i) => i.title)).toEqual(['Books', 'Library']);
+	});
+
+	it('moveNavItem is a no-op for an out-of-range path', () => {
+		expect(moveNavItem(base, [9], +1).items).toHaveLength(2);
+		expect(moveNavItem(base, [], +1).items).toHaveLength(2);
+	});
+
+	it('updateNavItem patches title and route, and a blank route clears it (becomes a label)', () => {
+		const renamed = updateNavItem(base, [0], { title: 'My Books' });
+		expect(renamed.items[0].title).toBe('My Books');
+		const cleared = updateNavItem(base, [0], { route: '   ' });
+		expect(cleared.items[0].route).toBeUndefined();
+		const retargeted = updateNavItem(base, [0], { route: '/new' });
+		expect(retargeted.items[0].route).toBe('/new');
+	});
+
+	it('updateNavItem patches a nested child and is a no-op out of range', () => {
+		const next = updateNavItem(base, [1, 0], { title: 'Cinema' });
+		expect(next.items[1].children?.[0].title).toBe('Cinema');
+		expect(updateNavItem(base, [9], { title: 'x' }).items).toHaveLength(2);
 	});
 });
