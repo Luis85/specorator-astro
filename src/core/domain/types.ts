@@ -65,6 +65,20 @@ export interface AssetRef {
 	url: string;
 }
 
+/**
+ * The note body carried on an entry snapshot for its detail page (FR-21, D8;
+ * DESIGN §6). Optional: present only when the entry needs its body rendered. The
+ * `content` is Obsidian-flavored markdown with `[[wikilinks]]` **already
+ * resolved to routes** against the route table before write (DESIGN §5.7) and
+ * `![[embeds]]` resolved to asset URLs; callouts are rendered by the template's
+ * remark/rehype step. Block refs, transclusions, and Dataview are out of scope
+ * and degrade gracefully (D8).
+ */
+export interface EntryBody {
+	format: 'markdown';
+	content: string;
+}
+
 /** One harvested entry (a note matching the base's filters). */
 export interface EntrySnapshot {
 	path: string;
@@ -77,6 +91,8 @@ export interface EntrySnapshot {
 	 * attachment is missing), so the renderer can emit `<img src=…>` directly.
 	 */
 	values: Record<BasesPropertyId, CellValue>;
+	/** Optional rendered detail-page body (FR-21, D8). Absent → no body section. */
+	body?: EntryBody;
 }
 
 /** A group of entries (when the view uses `groupBy`); `key` is `null` if flat. */

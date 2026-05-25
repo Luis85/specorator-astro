@@ -1,6 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { deriveRoute, planSync, slugify } from '../../src/core/domain/routing';
+import {
+	deriveRoute,
+	joinRoute,
+	planSync,
+	slugify,
+	slugifySegment,
+} from '../../src/core/domain/routing';
 import type { SiteConfig } from '../../src/core/domain/types';
+
+describe('slugifySegment', () => {
+	it('slugifies a basename for a single route segment', () => {
+		expect(slugifySegment('The Left Hand of Darkness')).toBe('the-left-hand-of-darkness');
+	});
+
+	it('falls back to "entry" for a basename that slugifies away', () => {
+		expect(slugifySegment('!!!')).toBe('entry');
+		expect(slugifySegment('')).toBe('entry');
+	});
+});
+
+describe('joinRoute', () => {
+	it('joins a parent route with a child segment', () => {
+		expect(joinRoute('/books', 'dune')).toBe('/books/dune');
+	});
+
+	it('treats an empty or root parent as the site root', () => {
+		expect(joinRoute('', 'dune')).toBe('/dune');
+		expect(joinRoute('/', 'dune')).toBe('/dune');
+	});
+
+	it('strips a trailing slash on the parent before joining', () => {
+		expect(joinRoute('/books/', 'dune')).toBe('/books/dune');
+	});
+});
 
 describe('slugify', () => {
 	it('lowercases and dasherizes labels', () => {

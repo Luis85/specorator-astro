@@ -15,6 +15,7 @@
  * and the mapper is unit-testable with plain in-memory fakes.
  */
 
+import { joinRoute, slugifySegment } from './routing';
 import type {
 	BasesPropertyId,
 	CellValue,
@@ -298,20 +299,4 @@ function baseIdFromPath(basePath: string): string {
 	const segments = basePath.split('/');
 	const last = segments[segments.length - 1] ?? basePath;
 	return last.replace(/\.[^.]+$/, '');
-}
-
-/** URL-safe slug for a single route segment (an entry basename). */
-function slugifySegment(input: string): string {
-	return (
-		input
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '-')
-			.replace(/^-+|-+$/g, '') || 'entry'
-	);
-}
-
-/** Join a base route with a child segment, keeping a single leading slash. */
-function joinRoute(route: string, segment: string): string {
-	const base = route.replace(/\/+$/g, '');
-	return base === '' ? `/${segment}` : `${base}/${segment}`;
 }

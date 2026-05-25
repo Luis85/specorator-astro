@@ -16,10 +16,30 @@ function baseName(path: string): string {
 	return last.replace(/\.[^.]+$/, '');
 }
 
+/**
+ * URL-safe slug for a single route segment (an entry basename / slug fallback).
+ * Unlike {@link slugify} it never collapses to empty — a basename that slugifies
+ * away (e.g. `!!!`) falls back to `entry` so a detail route always has a segment.
+ */
+export function slugifySegment(input: string): string {
+	return (
+		input
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '') || 'entry'
+	);
+}
+
 /** Ensure a single leading slash and no trailing slash (except root). */
 function normalizeRoute(route: string): string {
 	const trimmed = route.trim().replace(/^\/+|\/+$/g, '');
 	return trimmed === '' ? '/' : `/${trimmed}`;
+}
+
+/** Join a parent route with a child segment, keeping a single leading slash. */
+export function joinRoute(route: string, segment: string): string {
+	const base = route.replace(/\/+$/g, '');
+	return base === '' || base === '/' ? `/${segment}` : `${base}/${segment}`;
 }
 
 /**
