@@ -7,9 +7,10 @@ import {
 	TFile,
 	TFolder,
 	normalizePath,
+	parseYaml,
 } from 'obsidian';
 import type { AstroProcessPort, BuildExportPort } from './core/ports';
-import type { CellValue } from './core/domain/types';
+import type { CellValue, PublishTarget } from './core/domain/types';
 import { LiveResyncTrigger } from './core/domain/live-resync';
 import { UserFacingError } from './core/domain/errors';
 import { BuildSite } from './core/usecases/build-site';
@@ -22,6 +23,11 @@ import {
 	buildComponentNote,
 	type ComponentNoteStub,
 } from './core/domain/component-note-stub';
+import {
+	appendPublishTarget,
+	listViewNames,
+	type ParsedBaseFile,
+} from './core/domain/harvest-mapping';
 import { isComponentLibraryNote } from './core/domain/component-transpile';
 import { addNavItem } from './core/domain/navigation';
 import { derivePageRoute, isDesignatedPage, isHomeDesignation } from './core/domain/pages';
@@ -39,6 +45,7 @@ import { PageLoaderAdapter } from './adapters/page-loader-adapter';
 import { ProjectBootstrapAdapter } from './adapters/project-bootstrap-adapter';
 import { RegistryAdapter } from './adapters/registry-adapter';
 import { ScaffoldAdapter } from './adapters/scaffold-adapter';
+import { AddToSiteModal } from './adapters/add-to-site-modal';
 import { ScaffoldModal } from './adapters/scaffold-modal';
 import { SettingsStore } from './adapters/settings-store';
 import { SiteSettingTab } from './adapters/settings-tab';
@@ -279,7 +286,24 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 			},
 		});
 
+		// "Add to site" (the #1 onboarding affordance): publish a `.base` view from
+		// the command palette. A `checkCallback` hides the command unless the active
+		// file is a `.base`, so it only appears when actionable. The actual flow
+		// (read/parse/enumerate/pick/append) lives in `addBaseToSite`.
+		this.addCommand({
+			id: 'add-active-base-to-site',
+			name: 'Add active base to site',
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				const isBase = file !== null && file.extension === 'base';
+				if (checking) return isBase;
+				if (isBase) this.addBaseToSite(settings, file);
+				return isBase;
+			},
+		});
+
 		this.registerComponentMenus(settings);
+		this.registerBaseMenu(settings);
 		this.registerLiveResync(settings, sync);
 	}
 
@@ -321,6 +345,90 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		});
 		new Notice(
 			`Specorator: added "${title}" (${route}) to the navigation. Refine it in settings, then sync.`,
+		);
+	}
+
+	/**
+	 * Register the right-click affordance on `.base` files (the #1 onboarding
+	 * affordance): a "Specorator: add to site" item that appears ONLY for a
+	 * `.base` file. Mirrors the component-library `file-menu` pattern; registered
+	 * via `registerEvent` so Obsidian tears it down on unload (OBS-4).
+	 */
+	private registerBaseMenu(settings: SettingsStore): void {
+		this.registerEvent(
+			this.app.workspace.on('file-menu', (menu: Menu, file) => {
+				if (!(file instanceof TFile) || file.extension !== 'base') {
+					return;
+				}
+				menu.addItem((item) =>
+					item
+						.setTitle('Specorator: add to site')
+						.setIcon('globe')
+						.onClick(() => {
+							this.addBaseToSite(settings, file);
+						}),
+				);
+			}),
+		);
+	}
+
+	/**
+	 * Publish a `.base` view (the "Add to site" flow). Reads + parses the file,
+	 * enumerates its view names via the pure `listViewNames`, then:
+	 * - **no named views** → append a single default target (empty `viewName`,
+	 *   which `selectViewConfig` resolves to the first/implicit view);
+	 * - **exactly one view** → append it directly (skip the picker);
+	 * - **several** → open the {@link AddToSiteModal} to let the user pick one.
+	 * The publish-list mutation is the pure, idempotent `appendPublishTarget`;
+	 * this only does the Vault read + settings persist + Notice. A duplicate
+	 * `(basePath, viewName)` pair is reported instead of duplicated. Failures
+	 * (unreadable base) surface via the shared `UserFacingError` → Notice path.
+	 */
+	private addBaseToSite(settings: SettingsStore, file: TFile): void {
+		void (async () => {
+			try {
+				const raw = await this.app.vault.cachedRead(file);
+				const parsed = (parseYaml(raw) ?? {}) as ParsedBaseFile;
+				const viewNames = listViewNames(parsed);
+
+				if (viewNames.length === 0) {
+					// No named views: publish the implicit/first view (empty viewName).
+					this.publishTarget(settings, file.path, '');
+					return;
+				}
+				if (viewNames.length === 1) {
+					// Exactly one view: skip the picker and publish it directly.
+					this.publishTarget(settings, file.path, viewNames[0] ?? '');
+					return;
+				}
+				new AddToSiteModal(this.app, viewNames, (viewName) => {
+					this.publishTarget(settings, file.path, viewName);
+				}).open();
+			} catch (error) {
+				this.notifyFailure('add to site', error);
+			}
+		})();
+	}
+
+	/**
+	 * Append one `(basePath, viewName)` publish target to the curated publish
+	 * list via the pure, idempotent `appendPublishTarget`, persist the settings,
+	 * and surface the result. A newly-added target prompts a sync; a pre-existing
+	 * one is reported rather than duplicated.
+	 */
+	private publishTarget(settings: SettingsStore, basePath: string, viewName: string): void {
+		const target: PublishTarget = { basePath, viewName };
+		let added = false;
+		settings.edit((current) => {
+			const result = appendPublishTarget(current.site.includes, target);
+			current.site.includes = result.includes;
+			added = result.added;
+		});
+		const label = viewName === '' ? 'default view' : `'${viewName}'`;
+		new Notice(
+			added
+				? `Specorator: added ${label} to your site — run Specorator: Sync site to publish.`
+				: `Specorator: ${label} is already on your site.`,
 		);
 	}
 

@@ -23,6 +23,7 @@ import type {
 	EntryBody,
 	EntryGroup,
 	EntrySnapshot,
+	PublishTarget,
 	ResolvedTarget,
 	ViewSnapshot,
 	ViewType,
@@ -73,6 +74,63 @@ export function selectViewConfig(base: ParsedBaseFile, viewName: string): Select
 		type: normalizeViewType(match?.type),
 		...(groupBy ? { groupBy } : {}),
 	};
+}
+
+/**
+ * Enumerate the publishable view names of a parsed `.base` file, in document
+ * order and de-duplicated (the "Add to site" picker lists these).
+ *
+ * A view contributes its `name` only when it is a non-empty string; views with
+ * no name (an implicit/anonymous view) are skipped here, because a
+ * {@link PublishTarget} matches a view *by name* and the empty-name case is
+ * handled separately by the caller (it falls back to a single empty-`viewName`
+ * target, which {@link selectViewConfig} resolves to the first view). Returns an
+ * empty list when the base names no views.
+ */
+export function listViewNames(base: ParsedBaseFile): string[] {
+	const names: string[] = [];
+	const seen = new Set<string>();
+	for (const view of base.views ?? []) {
+		const name = view.name;
+		if (typeof name !== 'string' || name === '') {
+			continue;
+		}
+		if (seen.has(name)) {
+			continue;
+		}
+		seen.add(name);
+		names.push(name);
+	}
+	return names;
+}
+
+/** Outcome of {@link appendPublishTarget}: the resulting list + whether it grew. */
+export interface AppendPublishTargetResult {
+	/** The publish list after the (idempotent) append. */
+	includes: PublishTarget[];
+	/** `true` when `target` was newly added; `false` when it already existed. */
+	added: boolean;
+}
+
+/**
+ * Idempotently append a {@link PublishTarget} to a publish `includes` list,
+ * keyed on the `(basePath, viewName)` pair. If a target with the same base path
+ * and view name already exists the list is returned unchanged (`added: false`);
+ * otherwise the new target is appended at the end (`added: true`). Pure: the
+ * input list is never mutated — a new array is returned on append.
+ */
+export function appendPublishTarget(
+	includes: readonly PublishTarget[],
+	target: PublishTarget,
+): AppendPublishTargetResult {
+	const exists = includes.some(
+		(existing) =>
+			existing.basePath === target.basePath && existing.viewName === target.viewName,
+	);
+	if (exists) {
+		return { includes: [...includes], added: false };
+	}
+	return { includes: [...includes, target], added: true };
 }
 
 /** Coerce a raw `.base` view type to a supported {@link ViewType}, else `table`. */

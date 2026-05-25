@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+	appendPublishTarget,
 	buildViewSnapshot,
+	listViewNames,
 	mapEntry,
 	mapGroups,
 	mapValue,
@@ -13,7 +15,7 @@ import {
 	type HarvestedGroup,
 	type HarvestedValue,
 } from '../../src/core/domain/harvest-mapping';
-import type { BasesPropertyId, ResolvedTarget } from '../../src/core/domain/types';
+import type { BasesPropertyId, PublishTarget, ResolvedTarget } from '../../src/core/domain/types';
 
 /**
  * In-memory fakes for the structural Bases inputs the pure mapper consumes.
@@ -515,5 +517,76 @@ describe('buildViewSnapshot', () => {
 		});
 		// Root route + a basename that slugifies to empty -> '/entry'.
 		expect(snapshot.groups[0]?.entries[0]?.route).toBe('/entry');
+	});
+});
+
+describe('listViewNames', () => {
+	it('returns an empty list when the base names no views', () => {
+		expect(listViewNames({})).toEqual([]);
+		expect(listViewNames({ views: [] })).toEqual([]);
+	});
+
+	it('lists named view names in document order', () => {
+		const names = listViewNames({
+			views: [
+				{ type: 'cards', name: 'Gallery' },
+				{ type: 'table', name: 'Table' },
+			],
+		});
+		expect(names).toEqual(['Gallery', 'Table']);
+	});
+
+	it('skips views with no name or an empty name', () => {
+		const names = listViewNames({
+			views: [{ type: 'table' }, { type: 'cards', name: '' }, { type: 'list', name: 'List' }],
+		});
+		expect(names).toEqual(['List']);
+	});
+
+	it('de-duplicates repeated view names, keeping first occurrence order', () => {
+		const names = listViewNames({
+			views: [
+				{ type: 'table', name: 'A' },
+				{ type: 'cards', name: 'B' },
+				{ type: 'list', name: 'A' },
+			],
+		});
+		expect(names).toEqual(['A', 'B']);
+	});
+});
+
+describe('appendPublishTarget', () => {
+	const target1: PublishTarget = { basePath: 'Books/books.base', viewName: 'Gallery' };
+	const target2: PublishTarget = { basePath: 'Books/books.base', viewName: 'Table' };
+
+	it('appends a new target to an empty list', () => {
+		const result = appendPublishTarget([], target1);
+		expect(result.added).toBe(true);
+		expect(result.includes).toEqual([target1]);
+	});
+
+	it('appends at the end, preserving existing order', () => {
+		const result = appendPublishTarget([target1], target2);
+		expect(result.added).toBe(true);
+		expect(result.includes).toEqual([target1, target2]);
+	});
+
+	it('is idempotent on a duplicate (basePath, viewName) pair', () => {
+		const result = appendPublishTarget([target1, target2], { ...target1 });
+		expect(result.added).toBe(false);
+		expect(result.includes).toEqual([target1, target2]);
+	});
+
+	it('treats a differing viewName on the same base as a distinct target', () => {
+		const result = appendPublishTarget([target1], target2);
+		expect(result.added).toBe(true);
+		expect(result.includes).toHaveLength(2);
+	});
+
+	it('does not mutate the input list', () => {
+		const input: PublishTarget[] = [target1];
+		const result = appendPublishTarget(input, target2);
+		expect(input).toEqual([target1]);
+		expect(result.includes).not.toBe(input);
 	});
 });
