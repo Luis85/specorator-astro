@@ -1,4 +1,5 @@
 import type { PageNode, ResolvedTarget, SiteConfig, ViewSnapshot } from './domain/types';
+import type { NavConfig, NavigationTree } from './domain/navigation';
 import type { RawPageNote } from './domain/pages';
 import type { TemplateFile } from './domain/template';
 import type { AssetCopyTask, AssetLocation } from './usecases/resolve-assets';
@@ -17,6 +18,13 @@ export interface SettingsPort {
 	 * minimal test wirings (no pages) need not implement it.
 	 */
 	readPageFolders?(): { pagesFolder: string; libraryFolder: string };
+	/**
+	 * The curated navigation menu (FR-13; D14). `SyncSite` passes this to the pure
+	 * `resolveNavigation` along with the site's known routes, then commits the
+	 * resolved tree as the `navigation` snapshot. Optional so minimal test wirings
+	 * (no nav) need not implement it — an empty menu is committed instead.
+	 */
+	readNavConfig?(): NavConfig;
 }
 
 /**
@@ -86,14 +94,19 @@ export interface PageLoaderPort {
 /** Persists snapshots into the Astro project's data directory. */
 export interface SnapshotWriterPort {
 	/**
-	 * Atomically replace all persisted snapshots **and** standalone pages with
-	 * exactly these sets, in a single atomic swap (FR-3, FR-12). `pages` defaults
-	 * to empty so callers/tests that only commit collection snapshots are
-	 * unaffected; when present, the page set is committed in the SAME swap as the
-	 * snapshots, so a failed commit leaves the prior data dir (snapshots + pages)
-	 * intact.
+	 * Atomically replace all persisted snapshots, standalone pages, **and** the
+	 * resolved navigation tree with exactly these sets, in a single atomic swap
+	 * (FR-3, FR-12, FR-13). `pages` and `navigation` default to empty so
+	 * callers/tests that only commit collection snapshots are unaffected; when
+	 * present, the page set + navigation are committed in the SAME swap as the
+	 * snapshots, so a failed commit leaves the prior data dir (snapshots + pages +
+	 * navigation) intact.
 	 */
-	commit(snapshots: ViewSnapshot[], pages?: PageNode[]): Promise<void>;
+	commit(
+		snapshots: ViewSnapshot[],
+		pages?: PageNode[],
+		navigation?: NavigationTree,
+	): Promise<void>;
 }
 
 /**

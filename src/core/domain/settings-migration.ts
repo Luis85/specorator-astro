@@ -15,6 +15,7 @@
  */
 
 import { defaultConsent, type ConsentState } from './consent';
+import type { NavConfig, NavItem } from './navigation';
 import type { PublishTarget, SiteConfig } from './types';
 
 /** The current settings schema version. Bump on any breaking shape change. */
@@ -126,6 +127,12 @@ export interface VersionedSettings {
 	library: LibraryConfig;
 	/** Standalone-pages folder (FR-12). */
 	pages: PagesConfig;
+	/**
+	 * Curated, ordered, nestable site navigation (FR-13; D14). The authoritative
+	 * source for the rendered menu + breadcrumbs; resolved against the route table
+	 * at sync time into the committed `navigation` snapshot. Defaults to empty.
+	 */
+	nav: NavConfig;
 }
 
 /** Fresh defaults for a vault that has never persisted settings. */
@@ -138,6 +145,7 @@ export function defaultSettings(): VersionedSettings {
 		export: {},
 		library: { folder: DEFAULT_LIBRARY_FOLDER, consent: defaultConsent() },
 		pages: { folder: DEFAULT_PAGES_FOLDER },
+		nav: { items: [] },
 	};
 }
 
@@ -260,6 +268,53 @@ function parsePages(raw: unknown): PagesConfig {
 }
 
 /**
+ * Tolerantly parse one persisted navigation item (FR-13): a non-blank `title`,
+ * an optional non-empty string `route`, and recursively-parsed `children`. An
+ * item with no usable title is dropped (returns `null`) so junk never produces a
+ * label-less menu entry; resolution later re-validates the route against the
+ * site, so an unknown route here is harmless (it becomes a label).
+ */
+function parseNavItem(raw: unknown): NavItem | null {
+	if (!isRecord(raw) || typeof raw.title !== 'string' || raw.title.trim() === '') {
+		return null;
+	}
+	const item: NavItem = { title: raw.title };
+	if (typeof raw.route === 'string' && raw.route.trim() !== '') {
+		item.route = raw.route;
+	}
+	const children = parseNavItems(raw.children);
+	if (children.length > 0) {
+		item.children = children;
+	}
+	return item;
+}
+
+/** Parse a persisted list of nav items, dropping anything malformed. */
+function parseNavItems(raw: unknown): NavItem[] {
+	if (!Array.isArray(raw)) {
+		return [];
+	}
+	const items: NavItem[] = [];
+	for (const candidate of raw) {
+		const item = parseNavItem(candidate);
+		if (item !== null) {
+			items.push(item);
+		}
+	}
+	return items;
+}
+
+/**
+ * Tolerantly parse the curated navigation config (FR-13): the ordered, nestable
+ * item list, defaulting to empty when absent/blank. Migration-safe: old data
+ * lacking `nav` gets an empty menu (no schema bump — a defaulted field only fills
+ * in, never transforms existing data).
+ */
+function parseNav(raw: unknown): NavConfig {
+	return { items: parseNavItems(isRecord(raw) ? raw.items : undefined) };
+}
+
+/**
  * Upgrade any persisted settings blob to the current versioned schema.
  *
  * Handles three input classes:
@@ -269,10 +324,10 @@ function parsePages(raw: unknown): PagesConfig {
  * - **a current versioned document** → re-parsed defensively (idempotent).
  *
  * New optional fields (e.g. `sync.liveResync`, `export.exportPath`, the
- * `library` block with its **fail-closed** consent, and the `pages` folder, all
- * added after v1) are *defaulted* for old persisted data by the tolerant
- * per-field parsers below — so no schema bump is needed since no existing data
- * is transformed, only filled in.
+ * `library` block with its **fail-closed** consent, the `pages` folder, and the
+ * curated `nav` menu, all added after v1) are *defaulted* for old persisted data
+ * by the tolerant per-field parsers below — so no schema bump is needed since no
+ * existing data is transformed, only filled in.
  *
  * Always returns a fully-populated, valid {@link VersionedSettings}; never throws.
  */
@@ -292,5 +347,6 @@ export function migrate(persisted: unknown): VersionedSettings {
 		export: parseExport(persisted.export),
 		library: parseLibrary(persisted.library),
 		pages: parsePages(persisted.pages),
+		nav: parseNav(persisted.nav),
 	};
 }

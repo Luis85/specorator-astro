@@ -1,5 +1,6 @@
 import { debounce, type Plugin } from 'obsidian';
 import type { SiteConfig } from '../core/domain/types';
+import type { NavConfig } from '../core/domain/navigation';
 import type { ComponentLibraryPort, SettingsPort } from '../core/ports';
 import { grantConsent, revokeConsent, type ConsentState } from '../core/domain/consent';
 import {
@@ -93,6 +94,16 @@ export class SettingsStore implements SettingsPort, ComponentLibraryPort {
 	 */
 	readPagesConfig(): PagesConfig {
 		return { ...this.settings.pages };
+	}
+
+	/**
+	 * Snapshot the curated navigation menu (FR-13; `SettingsPort`). `SyncSite`
+	 * resolves this against the route table into the committed `navigation`
+	 * snapshot; the settings tab edits it. Returned as a structuredClone so callers
+	 * can't mutate the held config in place.
+	 */
+	readNavConfig(): NavConfig {
+		return structuredClone(this.settings.nav);
 	}
 
 	/**

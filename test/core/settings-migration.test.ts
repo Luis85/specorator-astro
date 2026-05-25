@@ -15,6 +15,9 @@ const DEFAULT_LIBRARY = { folder: DEFAULT_LIBRARY_FOLDER, consent: { granted: fa
 /** The migration-safe default pages block (folder set). */
 const DEFAULT_PAGES = { folder: DEFAULT_PAGES_FOLDER };
 
+/** The migration-safe default navigation block (empty curated menu, FR-13). */
+const DEFAULT_NAV = { items: [] };
+
 describe('settings migration', () => {
 	it('returns safe defaults for junk / nothing persisted', () => {
 		expect(migrate(null)).toEqual(defaultSettings());
@@ -33,6 +36,7 @@ describe('settings migration', () => {
 			export: {},
 			library: DEFAULT_LIBRARY,
 			pages: DEFAULT_PAGES,
+			nav: DEFAULT_NAV,
 		});
 		// Live re-sync ships off (opt-in), per FR-20 / D2.
 		expect(DEFAULT_LIVE_RESYNC).toBe(false);
@@ -59,6 +63,7 @@ describe('settings migration', () => {
 			export: {},
 			library: DEFAULT_LIBRARY,
 			pages: DEFAULT_PAGES,
+			nav: DEFAULT_NAV,
 		});
 	});
 
@@ -105,6 +110,7 @@ describe('settings migration', () => {
 			export: {},
 			library: DEFAULT_LIBRARY,
 			pages: DEFAULT_PAGES,
+			nav: DEFAULT_NAV,
 		});
 	});
 
@@ -117,6 +123,7 @@ describe('settings migration', () => {
 			export: {},
 			library: DEFAULT_LIBRARY,
 			pages: DEFAULT_PAGES,
+			nav: DEFAULT_NAV,
 		});
 		expect(migrate({ toolchain: { port: -1 } }).toolchain.port).toBe(DEFAULT_DEV_PORT);
 		expect(migrate({ toolchain: { port: 4321.5 } }).toolchain.port).toBe(DEFAULT_DEV_PORT);
@@ -221,6 +228,68 @@ describe('settings migration', () => {
 		expect(migrate({ pages: { folder: '   ' } }).pages.folder).toBe(DEFAULT_PAGES_FOLDER);
 		expect(migrate({ pages: { folder: 42 } }).pages.folder).toBe(DEFAULT_PAGES_FOLDER);
 		expect(migrate({ pages: 'nope' }).pages).toEqual(DEFAULT_PAGES);
+	});
+
+	it('defaults the nav menu to empty for old data lacking it (migration-safe, FR-13)', () => {
+		const v1WithoutNav = {
+			version: 1,
+			site: { includes: [] },
+			toolchain: { port: 4321 },
+			sync: { liveResync: false },
+			export: {},
+			library: DEFAULT_LIBRARY,
+			pages: DEFAULT_PAGES,
+		};
+		expect(migrate(v1WithoutNav).nav).toEqual(DEFAULT_NAV);
+		expect(migrate({ nav: 'nope' }).nav).toEqual(DEFAULT_NAV);
+		expect(migrate({ nav: { items: 'nope' } }).nav).toEqual(DEFAULT_NAV);
+	});
+
+	it('parses a curated, nested nav menu, preserving order and optional routes (FR-13)', () => {
+		const persisted = {
+			nav: {
+				items: [
+					{ title: 'Home', route: '/' },
+					{
+						title: 'Library',
+						children: [
+							{ title: 'Books', route: '/books' },
+							{ title: 'Films', route: '/films' },
+						],
+					},
+				],
+			},
+		};
+		expect(migrate(persisted).nav).toEqual({
+			items: [
+				{ title: 'Home', route: '/' },
+				{
+					title: 'Library',
+					children: [
+						{ title: 'Books', route: '/books' },
+						{ title: 'Films', route: '/films' },
+					],
+				},
+			],
+		});
+	});
+
+	it('drops malformed nav items (no title) and empty routes/children', () => {
+		const persisted = {
+			nav: {
+				items: [
+					{ title: 'Books', route: '/books' },
+					{ title: '   ' }, // blank title → dropped
+					{ route: '/orphan' }, // no title → dropped
+					42, // junk → dropped
+					{ title: 'Label', route: '' }, // empty route → label (route omitted)
+					{ title: 'Outer', children: [{ title: '' }] }, // child dropped → no children key
+				],
+			},
+		};
+		expect(migrate(persisted).nav).toEqual({
+			items: [{ title: 'Books', route: '/books' }, { title: 'Label' }, { title: 'Outer' }],
+		});
 	});
 
 	it('drops malformed includes and keeps optional fields only when non-empty', () => {

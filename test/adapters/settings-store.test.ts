@@ -46,6 +46,7 @@ describe('SettingsStore', () => {
 			export: {},
 			library: { folder: 'Site/components', consent: { granted: false } },
 			pages: { folder: 'Site/pages' },
+			nav: { items: [] },
 		});
 	});
 
