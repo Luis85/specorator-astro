@@ -69,9 +69,35 @@ comments, and discussion.
   root shows its message verbatim as a `Notice` instead of "see console."
 - **Publish target** — one `(base, view)` to publish; **resolved target** adds a
   concrete route + component/layout after planning.
-- **Component note** — an Obsidian note authoring an Astro component as an
-  ` ```astro ` code block; transpiled into the Astro project. Opt-in
-  (executes at build time).
+- **Component note** — a fully Obsidian-compatible frontmatter markdown note in
+  the configurable **component-library folder** (default `Site/components`,
+  FR-11f) authoring an Astro component: a `component:` frontmatter block
+  (`name`/`kind`/`appliesTo`/`props`) + exactly one ` ```astro ` code-fence. It
+  renders harmlessly in Obsidian and is **transpiled** into a real `.astro` under
+  `src/generated/` (the fence verbatim + a prepended generated props script).
+  Opt-in: it **executes at build time** with no sandbox, so transpilation is
+  hard-gated by one-time **consent** (D11; §5.6).
+- **Component transpiler** — the pure `component-transpile.ts`
+  (`transpileComponentNote`): raw note markdown → either a `TranspiledComponent`
+  (the generated `.astro` path `src/generated/{views,layouts,components}/<Name>.astro`
+    - contents) or a `SkippedNote` with a reason. A note that is not a well-formed
+      component (no `component:` frontmatter, no `name`, not exactly one ` ```astro `
+      fence, malformed metadata) is **skipped, never thrown** (FR-11g), so a stray
+      note neither emits a module nor crashes the sync. The `generated` tier it
+      targets shadows `user/` then `theme/` (FR-11j). The vault read + the
+      `src/generated/` write are the `ComponentLibraryTranspilePort`/adapter's job.
+- **Consent gate** — the pure `consent.ts` (`shouldTranspileLibrary`) over a
+  persisted, revocable `ConsentState` (`granted` + advisory `grantedVersion`/
+  `grantedAt`), held in the versioned settings `library.consent` (default NOT
+  granted, **fail-closed** in `migrate()`). It is the load-bearing FR-18/D11
+  mitigation: build-time Node can't be honestly sandboxed, so the `TranspileLibrary`
+  use-case **no-ops before any I/O** when consent is absent/revoked — no `.astro`
+  is generated or executed; only an explicit `granted === true` opens it. The
+  `ConsentModal` (no sandbox claim) + settings toggle grant/revoke it.
+- **Leakage predicate** — the pure `isComponentLibraryNote(path, libraryFolder)`
+  (FR-11i) that excludes component-library notes from page detection so they
+  never become website pages; an empty library folder matches nothing
+  (exclusion is opt-in). The C13 page-loader consumes this seam.
 - **Snapshot loader** — the template's custom Astro Content Layer loader
   (`src/content/loader.ts`) that reads the committed data dir (`<project>/data/`,
   resolved from `config.root`, outside `src/`), validates each snapshot against
