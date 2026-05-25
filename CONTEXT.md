@@ -38,6 +38,22 @@ comments, and discussion.
 - **Auto-sync on first preview** — the preview flow harvests once before
   starting the dev server so the preview reflects current data, latched
   per-session in `PreviewSite` so subsequent previews don't re-sync (D2; FR-20).
+- **Build** — producing a deployable static site with `astro build` (the
+  `BuildSite` use-case behind `AstroProcessPort.build()`). The flow it composes
+  is _guard core plugins (Bases only — build never previews) → ensure project →
+  auto-sync → `astro build` → `dist/`_. Unlike preview it **re-syncs on every
+  build** (no session latch) so the produced `dist/` always reflects current
+  Bases data; a non-zero `astro build` exit propagates as a failure the root
+  shows as a Notice (FR-6, FR-22; D6).
+- **Build output & export** — `astro build` always writes `dist/` _inside_ the
+  data-folder project (NFR-3). The **Export/reveal build** action
+  (`BuildExportPort` → `BuildExportAdapter`) copies that `dist/` into the
+  user-chosen **export location** (the optional `export.exportPath` setting,
+  FR-8) and reveals it in the OS file manager for manual deploy (FR-22; D6). The
+  copy **copies into** the destination (recursive `node:fs` `cp`) and never
+  deletes anything already there (NFR-9); reveal goes through Electron's `shell`,
+  resolved defensively. The composition root makes only the thin guards (unset
+  destination, missing build), each surfaced as a Notice.
 - **Live re-sync trigger** — the pure debounce/decision state machine
   (`LiveResyncTrigger`) for re-syncing the actively-previewed base on data
   changes: given change events + a quiet window + the `sync.liveResync` toggle,

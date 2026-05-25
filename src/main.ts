@@ -1,13 +1,15 @@
 import { FileSystemAdapter, Notice, Plugin, TFile } from 'obsidian';
-import type { AstroProcessPort } from './core/ports';
+import type { AstroProcessPort, BuildExportPort } from './core/ports';
 import { LiveResyncTrigger } from './core/domain/live-resync';
 import { UserFacingError } from './core/domain/errors';
+import { BuildSite } from './core/usecases/build-site';
 import { EnsureProject } from './core/usecases/ensure-project';
 import { PreviewSite } from './core/usecases/preview-site';
 import { SyncSite } from './core/usecases/sync-site';
 import { AssetSourceAdapter } from './adapters/asset-source-adapter';
 import { AstroProcessAdapter } from './adapters/astro-process-adapter';
 import { BasesHarvesterAdapter } from './adapters/bases-harvester-adapter';
+import { BuildExportAdapter } from './adapters/build-export-adapter';
 import { CorePluginsAdapter } from './adapters/core-plugins-adapter';
 import { FsSnapshotWriter } from './adapters/fs-snapshot-writer';
 import { ProjectBootstrapAdapter } from './adapters/project-bootstrap-adapter';
@@ -61,13 +63,25 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		// vault always has a `FileSystemAdapter` with an absolute base path; if it
 		// somehow isn't one, skip the asset step (sync still works without covers).
 		const fsAdapter = this.app.vault.adapter;
+		const vaultBasePath =
+			fsAdapter instanceof FileSystemAdapter ? fsAdapter.getBasePath() : undefined;
 		const assets =
-			fsAdapter instanceof FileSystemAdapter
-				? new AssetSourceAdapter(this.app, projectDir, fsAdapter.getBasePath())
+			vaultBasePath !== undefined
+				? new AssetSourceAdapter(this.app, projectDir, vaultBasePath)
 				: undefined;
 
 		const sync = new SyncSite(settings, bases, writer, corePlugins, assets);
 		const preview = new PreviewSite(bootstrap, corePlugins, sync, astro, webViewer);
+
+		// Build/export (FR-6, FR-22 / D6): BuildSite auto-syncs then runs `astro
+		// build` to `dist/`; the export adapter copies that `dist/` to the chosen
+		// location and reveals it. Desktop-only, so `vaultBasePath` is present; if
+		// it somehow isn't a FileSystemAdapter, export is unavailable.
+		const build = new BuildSite(bootstrap, corePlugins, sync, astro);
+		const exporter =
+			vaultBasePath !== undefined
+				? new BuildExportAdapter(projectDir, vaultBasePath)
+				: undefined;
 
 		this.addCommand({
 			id: 'sync-site',
@@ -95,6 +109,32 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 				} catch (error) {
 					this.notifyFailure('preview', error);
 				}
+			},
+		});
+
+		this.addCommand({
+			id: 'build-site',
+			name: 'Build site',
+			callback: async () => {
+				try {
+					const result = await build.run();
+					for (const warning of result.warnings) {
+						console.warn(`[specorator] ${warning}`);
+					}
+					new Notice(
+						`Specorator: built site to dist/ (${String(result.written)} view(s)).`,
+					);
+				} catch (error) {
+					this.notifyFailure('build', error);
+				}
+			},
+		});
+
+		this.addCommand({
+			id: 'export-build',
+			name: 'Export/reveal build',
+			callback: async () => {
+				await this.exportBuild(settings, exporter);
 			},
 		});
 
@@ -135,6 +175,35 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 				}
 			}, RESYNC_TICK_MS),
 		);
+	}
+
+	/**
+	 * Run the **Export/Reveal build** action (FR-22 / D6): copy the built `dist/`
+	 * to the user-chosen export location and reveal it in the OS file manager.
+	 * The only decision here is the two thin guards a composition root may make —
+	 * an unset destination and an unavailable exporter (non-desktop fs) — each
+	 * surfaced as a clear Notice; the copy/reveal I/O lives in the adapter.
+	 */
+	private async exportBuild(
+		settings: SettingsStore,
+		exporter: BuildExportPort | undefined,
+	): Promise<void> {
+		if (exporter === undefined) {
+			new Notice('Specorator: export is unavailable in this environment.');
+			return;
+		}
+		const destDir = settings.readExportConfig().exportPath;
+		if (destDir === undefined || destDir === '') {
+			new Notice('Specorator: set an export location in settings first.');
+			return;
+		}
+		try {
+			const { exportedTo } = await exporter.exportBuild(destDir);
+			await exporter.reveal(exportedTo);
+			new Notice(`Specorator: exported build to ${exportedTo}.`);
+		} catch (error) {
+			this.notifyFailure('export', error);
+		}
 	}
 
 	/**
