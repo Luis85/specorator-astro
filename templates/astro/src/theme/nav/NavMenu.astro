@@ -1,0 +1,89 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Recursive navigation menu (FR-13; DESIGN §5.7). Renders one ordered <ul> of
+ * the resolved nav nodes; a node with a `route` is a link, a route-less node is a
+ * plain label/group, and any node with children recurses one level deeper. The
+ * node currently being rendered is marked `aria-current="page"`. Consumes theme
+ * tokens only — no hard-coded colors (NFR-10). Self-imports for nesting.
+ */
+import type { NavNode } from '../../content/schema';
+import { isCurrent } from '../navigation';
+import NavMenu from './NavMenu.astro';
+
+interface Props {
+	items: NavNode[];
+	currentRoute: string;
+	/** Nesting depth (0 = top level); drives the sub-list styling hook. */
+	depth?: number;
+}
+
+const { items, currentRoute, depth = 0 } = Astro.props;
+---
+
+<ul class="sp-nav-list" data-depth={depth}>
+	{
+		items.map((node) => (
+			<li class="sp-nav-item">
+				{node.route !== undefined ? (
+					<a
+						class="sp-nav-link"
+						href={node.route}
+						aria-current={isCurrent(node.route, currentRoute) ? 'page' : undefined}
+					>
+						{node.title}
+					</a>
+				) : (
+					<span class="sp-nav-label">{node.title}</span>
+				)}
+				{node.children.length > 0 && (
+					<NavMenu items={node.children} currentRoute={currentRoute} depth={depth + 1} />
+				)}
+			</li>
+		))
+	}
+</ul>
+
+<style>
+	.sp-nav-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-space-sm);
+	}
+	.sp-nav-list[data-depth='0'] {
+		align-items: center;
+	}
+	/* Nested lists stack under their parent rather than running inline. */
+	.sp-nav-list:not([data-depth='0']) {
+		flex-direction: column;
+		gap: var(--sp-space-2xs);
+		width: 100%;
+		margin-top: var(--sp-space-2xs);
+		padding-left: var(--sp-space-sm);
+	}
+	.sp-nav-item {
+		display: flex;
+		flex-wrap: wrap;
+	}
+	.sp-nav-link {
+		color: var(--sp-color-fg);
+		font-size: var(--sp-text-sm);
+	}
+	.sp-nav-link:hover {
+		color: var(--sp-color-accent);
+		text-decoration: none;
+	}
+	.sp-nav-link[aria-current='page'] {
+		color: var(--sp-color-accent);
+		font-weight: 700;
+	}
+	.sp-nav-label {
+		color: var(--sp-color-muted);
+		font-size: var(--sp-text-sm);
+		font-weight: 600;
+	}
+</style>

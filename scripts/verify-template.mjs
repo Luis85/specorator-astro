@@ -68,6 +68,14 @@ function countOccurrences(haystack, needle) {
 	return count;
 }
 
+/** Return the substring from the first `start` up to the next `end` (exclusive of end). */
+function sliceBetween(haystack, start, end) {
+	const a = haystack.indexOf(start);
+	if (a === -1) return '';
+	const b = haystack.indexOf(end, a);
+	return b === -1 ? haystack.slice(a) : haystack.slice(a, b);
+}
+
 /** Assert the index order of `first` precedes `second` in `haystack`. */
 function assertOrder(haystack, first, second, label) {
 	const a = haystack.indexOf(first);
@@ -314,6 +322,66 @@ async function assertPageRoutes(dist) {
 	);
 }
 
+/**
+ * Verify the C14 navigation (docs/DESIGN.md §5.7; FR-13): the curated, resolved
+ * navigation tree committed to data/navigation.json renders as a primary menu on
+ * EVERY page type (home, listing, detail, standalone page) with the right order
+ * and nesting, and breadcrumbs render the ancestor trail on a nested route. The
+ * nav is rendered by BaseLayout, so it must appear consistently across pages.
+ */
+async function assertNavigation(dist) {
+	// The nav menu renders on every page type — home, a listing, a detail page,
+	// and a standalone page — proving BaseLayout renders it site-wide.
+	const pageTypes = {
+		home: path.join(dist, 'index.html'),
+		listing: path.join(dist, 'books', 'index.html'),
+		detail: path.join(dist, 'books', 'dune', 'index.html'),
+		page: path.join(dist, 'about', 'index.html'),
+	};
+	for (const [label, file] of Object.entries(pageTypes)) {
+		const html = await readFile(file, 'utf8');
+		assertIncludes(html, 'class="sp-site-nav"', `nav menu present on ${label} page`);
+		// The top-level menu items render in curated order: Home → Books → Library →
+		// About. Astro pads element text with spaces, so match the spaced labels.
+		assertOrder(html, '> Home </a>', '> Books </a>', `${label} nav order (Home→Books)`);
+		assertOrder(html, '> Books </a>', 'sp-nav-label', `${label} nav order (Books→Library)`);
+		assertOrder(html, 'sp-nav-label', '> About </a>', `${label} nav order (Library→About)`);
+		// Nesting: the nested "Dune" (under Books) and the "Films"/"Tasks" (under
+		// the route-less "Library" label) render as sub-list items.
+		assertIncludes(html, 'href="/books/dune"', `${label} nested nav link (Dune)`);
+		assertIncludes(html, 'href="/films"', `${label} nested nav link (Films)`);
+		assertIncludes(html, 'href="/tasks"', `${label} nested nav link (Tasks)`);
+		// The route-less "Library" item renders as a label, never a link.
+		assertIncludes(html, 'class="sp-nav-label"', `${label} route-less label rendered`);
+	}
+
+	// The active page's menu link is marked aria-current="page" (the listing page
+	// is /books, so its own Books link is current).
+	const booksHtml = await readFile(pageTypes.listing, 'utf8');
+	assertIncludes(booksHtml, 'aria-current="page"', '/books active nav item marked aria-current');
+
+	// Breadcrumbs render the ancestor trail on a nested route: /books/dune is
+	// Home / Books / Dune, inside a semantic <nav aria-label="Breadcrumb">. Assert
+	// on the breadcrumb <ol> slice so the menu's links can't satisfy the order.
+	const duneHtml = await readFile(pageTypes.detail, 'utf8');
+	assertIncludes(duneHtml, 'class="sp-breadcrumbs"', '/books/dune breadcrumbs present');
+	assertIncludes(duneHtml, 'aria-label="Breadcrumb"', '/books/dune breadcrumb landmark');
+	const crumbList = sliceBetween(duneHtml, 'sp-breadcrumb-list', '</ol>');
+	assertOrder(crumbList, 'href="/"', 'href="/books"', '/books/dune crumb order (Home→Books)');
+	assertOrder(
+		crumbList,
+		'href="/books"',
+		'aria-current="page"',
+		'/books/dune crumb order (→Dune)',
+	);
+	// The final crumb (the current page) is the route-less, aria-current Dune span.
+	assertIncludes(crumbList, '>Dune</span>', '/books/dune final crumb text');
+
+	console.log(
+		'[verify:template] OK — nav menu renders site-wide with order/nesting; breadcrumbs on a nested route (FR-13).',
+	);
+}
+
 /** Read every bundled stylesheet under dist/_astro and concatenate in name order. */
 async function readBundledCss(dist) {
 	const astroDir = path.join(dist, '_astro');
@@ -456,6 +524,11 @@ async function main() {
 		// the bundled placeholder) and a normal page (/about) renders its body with
 		// a plugin-resolved wikilink (FR-12, FR-15; DESIGN §5.7).
 		await assertPageRoutes(dist);
+
+		// C14: assert the navigation — the resolved nav tree renders as a primary
+		// menu on every page type with correct order/nesting, and breadcrumbs render
+		// the ancestor trail on a nested route (FR-13; DESIGN §5.7).
+		await assertNavigation(dist);
 
 		console.log('[verify:template] OK — astro check + build succeeded; static routes emitted.');
 	} finally {

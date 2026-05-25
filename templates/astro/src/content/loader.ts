@@ -21,12 +21,23 @@ import type { Loader, LoaderContext } from 'astro/loaders';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { indexSchema, pageNodeSchema, pagesManifestSchema, snapshotSchema } from './schema';
+import {
+	indexSchema,
+	navigationManifestSchema,
+	navigationTreeSchema,
+	pageNodeSchema,
+	pagesManifestSchema,
+	snapshotSchema,
+} from './schema';
 
 /** Project-relative data dir (POSIX), resolved against `config.root`. */
 const DATA_DIR = 'data';
 const INDEX_FILE = 'index.json';
 const PAGES_FILE = 'pages.json';
+const NAVIGATION_FILE = 'navigation.json';
+
+/** The single store id the navigation tree is keyed under (FR-13). */
+const NAVIGATION_ID = 'site';
 
 export interface SnapshotLoaderOptions {
 	/** Data dir relative to the Astro project root. Defaults to `data`. */
@@ -174,6 +185,67 @@ export function pagesLoader(options: SnapshotLoaderOptions = {}): Loader {
 			});
 		},
 		schema: pageNodeSchema,
+	};
+}
+
+/**
+ * The Content Layer loader that feeds the `navigation` collection — the single
+ * resolved navigation tree the plugin commits to `<dir>/navigation.json` (FR-13;
+ * DESIGN §5.7). The tree is stored under one fixed id (`'site'`) so `BaseLayout`
+ * reads it once and renders the menu + breadcrumbs consistently across every
+ * page. A missing `navigation.json` (a pre-C14 data dir / nothing synced) is not
+ * fatal — the collection is simply empty and the layout renders no menu.
+ */
+export function navigationLoader(options: SnapshotLoaderOptions = {}): Loader {
+	const dir = options.dir ?? DATA_DIR;
+
+	return {
+		name: 'specorator-navigation-loader',
+		async load(context: LoaderContext): Promise<void> {
+			const { store, logger, config, parseData, watcher } = context;
+
+			const dataDirUrl = new URL(`${dir}/`, config.root);
+			const dataDirPath = fileURLToPath(dataDirUrl);
+			const navPath = path.join(dataDirPath, NAVIGATION_FILE);
+
+			const loadAll = async (): Promise<void> => {
+				store.clear();
+
+				const raw = await readFile(navPath, 'utf8').catch((error: unknown) => {
+					if (isNotFound(error)) {
+						logger.info(`No navigation manifest at ${navPath} yet — no menu.`);
+						return null;
+					}
+					throw error;
+				});
+				if (raw === null) return;
+
+				const manifest = navigationManifestSchema.parse(JSON.parse(raw));
+				logger.info(
+					`Loading navigation (${String(manifest.navigation.items.length)} top-level item(s)) from ${dir}/.`,
+				);
+				const data = await parseData({ id: NAVIGATION_ID, data: manifest.navigation });
+				store.set({ id: NAVIGATION_ID, data });
+			};
+
+			await loadAll();
+
+			// Dev-only reload when the writer rewrites the data dir (FR-7); the swap
+			// is atomic, so any change under it means re-read the full set.
+			watcher?.on('change', (changedPath: string) => {
+				if (isUnderDir(changedPath, dataDirPath)) {
+					logger.info('Navigation data changed — reloading collection.');
+					void loadAll();
+				}
+			});
+			watcher?.on('add', (changedPath: string) => {
+				if (isUnderDir(changedPath, dataDirPath)) {
+					logger.info('Navigation data added — reloading collection.');
+					void loadAll();
+				}
+			});
+		},
+		schema: navigationTreeSchema,
 	};
 }
 

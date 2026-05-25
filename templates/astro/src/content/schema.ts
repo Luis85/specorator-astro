@@ -152,3 +152,38 @@ export const indexSchema = z.object({
 	snapshots: z.array(indexEntrySchema),
 });
 export type SnapshotIndex = z.infer<typeof indexSchema>;
+
+/**
+ * One resolved navigation node (FR-13; DESIGN §5.7). The plugin resolves the
+ * curated settings menu against the route table before commit, so a node's
+ * `route` (when present) is a real on-site route; an item pointing nowhere /
+ * off-site arrives as a `route`-less **label**. `children` are ordered. Keep in
+ * lockstep with `NavNode` in `src/core/domain/navigation.ts` (do NOT import it —
+ * standalone build). Zod 4 needs an explicit type for the recursive `children`.
+ */
+export interface NavNode {
+	title: string;
+	route?: string;
+	children: NavNode[];
+}
+export const navNodeSchema: z.ZodType<NavNode> = z.lazy(() =>
+	z.object({
+		title: z.string(),
+		route: z.string().optional(),
+		children: z.array(navNodeSchema),
+	}),
+);
+
+/** The resolved navigation tree the template renders as menu + breadcrumbs. */
+export const navigationTreeSchema = z.object({
+	items: z.array(navNodeSchema),
+});
+export type NavigationTree = z.infer<typeof navigationTreeSchema>;
+
+/** Shape of `data/navigation.json`, the navigation manifest (FR-13). */
+export const navigationManifestSchema = z.object({
+	version: z.number(),
+	generatedAt: z.string(),
+	navigation: navigationTreeSchema,
+});
+export type NavigationManifest = z.infer<typeof navigationManifestSchema>;

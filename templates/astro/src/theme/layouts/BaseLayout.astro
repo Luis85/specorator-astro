@@ -12,6 +12,10 @@
  */
 import '../styles/tokens.css';
 import '../../user/theme.css';
+import { getCollection } from 'astro:content';
+import type { NavigationTree } from '../../content/schema';
+import NavMenu from '../nav/NavMenu.astro';
+import Breadcrumbs from '../nav/Breadcrumbs.astro';
 
 interface Props {
 	title?: string;
@@ -21,6 +25,15 @@ interface Props {
 const { title = 'Specorator site', description } = Astro.props;
 const siteTitle = 'Specorator site';
 const fullTitle = title === siteTitle ? title : `${title} · ${siteTitle}`;
+
+// Curated navigation (FR-13): the plugin resolves the settings menu against the
+// route table and commits it; the `navigation` collection loads it under the
+// fixed id `'site'`. Render the menu + breadcrumbs on EVERY page so navigation
+// is consistent site-wide. A missing/empty tree (nothing synced) renders nothing.
+const navEntries = await getCollection('navigation');
+const navigation: NavigationTree = navEntries.find((e) => e.id === 'site')?.data ?? { items: [] };
+const currentRoute = Astro.url.pathname;
+const hasNav = navigation.items.length > 0;
 ---
 
 <!doctype html>
@@ -38,9 +51,16 @@ const fullTitle = title === siteTitle ? title : `${title} · ${siteTitle}`;
 		<div class="sp-shell">
 			<header class="sp-site-header">
 				<a class="sp-site-title" href="/">{siteTitle}</a>
-				{/* Curated navigation renders here (C14). */}
+				{
+					hasNav && (
+						<nav class="sp-site-nav" aria-label="Primary">
+							<NavMenu items={navigation.items} currentRoute={currentRoute} />
+						</nav>
+					)
+				}
 			</header>
 			<main id="sp-main" class="sp-main" tabindex="-1">
+				{hasNav && <Breadcrumbs tree={navigation} currentRoute={currentRoute} />}
 				<slot />
 			</main>
 			<footer class="sp-site-footer">
@@ -150,6 +170,10 @@ const fullTitle = title === siteTitle ? title : `${title} · ${siteTitle}`;
 	.sp-site-title:hover {
 		text-decoration: none;
 		color: var(--sp-color-accent);
+	}
+	/* The primary nav sits beside the title and may wrap on narrow screens. */
+	.sp-site-nav {
+		margin-left: auto;
 	}
 	.sp-main {
 		flex: 1 1 auto;
