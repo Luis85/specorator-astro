@@ -1,6 +1,7 @@
 import type { ResolvedTarget, SiteConfig, ViewSnapshot } from './domain/types';
 import type { TemplateFile } from './domain/template';
 import type { AssetCopyTask, AssetLocation } from './usecases/resolve-assets';
+import type { DiscoveredRegistry } from './domain/registry';
 
 /** Provides the user's site configuration (managed in the plugin's settings). */
 export interface SettingsPort {
@@ -100,6 +101,42 @@ export interface CorePluginsPort {
  */
 export interface ProjectBootstrapPort {
 	ensureProject(): Promise<{ projectDir: string }>;
+}
+
+/**
+ * Discovers the component/layout NAMES available in the scaffolded project
+ * (FR-11b; DESIGN §5.6) so the settings UI can populate its assignment dropdowns
+ * and the assignment resolver knows the universe of names.
+ *
+ * The fs scan is the only impure part: the adapter walks each tier's view +
+ * layout dirs (`theme/`, `user/`, and the `generated/` seam for C12) for
+ * `.astro` files and returns their basenames grouped by tier. The **precedence
+ * merge** of those tiers (vault → user → theme, FR-11j) is the pure
+ * `resolveRegistry`; this port returns the raw per-tier names so that pure
+ * resolution stays testable and the adapter stays a thin directory read.
+ */
+export interface RegistryPort {
+	/** Scan the project's tiers for component/layout names (raw, pre-precedence). */
+	discover(): Promise<DiscoveredRegistry>;
+}
+
+/**
+ * Scaffolds a new **user-owned** component/layout stub `.astro` file into the
+ * project's `src/user/` tree (FR-11d; DESIGN §5.6). The decision of where a stub
+ * lives and what it contains is small enough to keep with the adapter; the one
+ * load-bearing rule is the safety invariant:
+ *
+ * - **NFR-9 (no data loss):** an existing file is **never** overwritten —
+ *   `scaffold` reports `created: false` and leaves the file untouched. Only a
+ *   brand-new path is written.
+ */
+export interface ScaffoldPort {
+	/**
+	 * Create a user-owned stub for `name` of `kind` ('view' | 'layout'). Returns
+	 * the project-relative path written and whether it was newly created (false →
+	 * a file of that name already existed and was left intact, NFR-9).
+	 */
+	scaffold(kind: 'view' | 'layout', name: string): Promise<{ path: string; created: boolean }>;
 }
 
 /**

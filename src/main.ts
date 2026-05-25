@@ -13,6 +13,9 @@ import { BuildExportAdapter } from './adapters/build-export-adapter';
 import { CorePluginsAdapter } from './adapters/core-plugins-adapter';
 import { FsSnapshotWriter } from './adapters/fs-snapshot-writer';
 import { ProjectBootstrapAdapter } from './adapters/project-bootstrap-adapter';
+import { RegistryAdapter } from './adapters/registry-adapter';
+import { ScaffoldAdapter } from './adapters/scaffold-adapter';
+import { ScaffoldModal } from './adapters/scaffold-modal';
 import { SettingsStore } from './adapters/settings-store';
 import { SiteSettingTab } from './adapters/settings-tab';
 import { WebViewerAdapter } from './adapters/web-viewer-adapter';
@@ -35,7 +38,13 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		const projectDir = `${this.manifest.dir ?? ''}/astro`;
 		const settings = new SettingsStore(this);
 		await settings.load();
-		this.addSettingTab(new SiteSettingTab(this.app, this, settings));
+
+		// Registry discovery (FR-11b) + scaffold (FR-11d) seams. The settings tab
+		// reads discovered names to populate the per-view component/layout dropdowns;
+		// the scaffold command writes user-owned stubs (never overwriting, NFR-9).
+		const registry = new RegistryAdapter(projectDir);
+		const scaffold = new ScaffoldAdapter(projectDir);
+		this.addSettingTab(new SiteSettingTab(this.app, this, settings, registry));
 
 		const bases = new BasesHarvesterAdapter(this.app, this);
 		const writer = new FsSnapshotWriter(projectDir);
@@ -135,6 +144,31 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 			name: 'Export/reveal build',
 			callback: async () => {
 				await this.exportBuild(settings, exporter);
+			},
+		});
+
+		// Scaffold a user-owned component/layout stub (FR-11d). Ensures the project
+		// exists first (so `src/user/` is present), then writes a stub — never
+		// overwriting (NFR-9, enforced in the adapter). The modal is pure UI.
+		this.addCommand({
+			id: 'scaffold-component',
+			name: 'Scaffold component/layout',
+			callback: () => {
+				new ScaffoldModal(this.app, (request) => {
+					void (async () => {
+						try {
+							await bootstrap.ensureProject();
+							const result = await scaffold.scaffold(request.kind, request.name);
+							new Notice(
+								result.created
+									? `Specorator: created ${result.path}. Assign it in settings, then run a sync.`
+									: `Specorator: ${result.path} already exists — left untouched.`,
+							);
+						} catch (error) {
+							this.notifyFailure('scaffold', error);
+						}
+					})();
+				}).open();
 			},
 		});
 

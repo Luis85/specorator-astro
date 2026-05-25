@@ -1,6 +1,14 @@
 import { PluginSettingTab, Setting, type App, type Plugin } from 'obsidian';
 import type { SettingsStore } from './settings-store';
+import type { RegistryPort } from '../core/ports';
+import type { PublishTarget } from '../core/domain/types';
 import { DEFAULT_DEV_PORT } from '../core/domain/settings-migration';
+import {
+	AUTO,
+	availableNames,
+	resolveRegistry,
+	type ResolvedRegistry,
+} from '../core/domain/registry';
 
 /**
  * Native settings tab for editing the site configuration: the absolute site URL,
@@ -11,10 +19,20 @@ import { DEFAULT_DEV_PORT } from '../core/domain/settings-migration';
  * wrong row.
  */
 export class SiteSettingTab extends PluginSettingTab {
+	/**
+	 * The discovered + precedence-resolved component/layout names that populate
+	 * the per-view dropdowns (FR-11b/d). Cached across a `display()` pass and
+	 * refreshed (async) each time the tab opens, since scaffolding a stub adds a
+	 * name. `null` until the first scan resolves.
+	 */
+	private registry: ResolvedRegistry | null = null;
+
 	constructor(
 		app: App,
 		plugin: Plugin,
 		private readonly store: SettingsStore,
+		/** Optional: when present, the per-view dropdowns list discovered names. */
+		private readonly registryPort?: RegistryPort,
 	) {
 		super(app, plugin);
 	}
@@ -22,6 +40,11 @@ export class SiteSettingTab extends PluginSettingTab {
 	override display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+
+		// Kick off (or refresh) the registry scan; re-render when it resolves so
+		// the dropdowns gain the discovered names. The first synchronous paint uses
+		// whatever is already cached (text inputs until the scan lands).
+		this.refreshRegistry();
 
 		new Setting(containerEl)
 			.setName('Site URL')
@@ -44,7 +67,7 @@ export class SiteSettingTab extends PluginSettingTab {
 
 		const includes = this.store.current().site.includes;
 		includes.forEach((target, index) => {
-			new Setting(containerEl)
+			const setting = new Setting(containerEl)
 				.setName(`View ${String(index + 1)}`)
 				.addText((text) =>
 					text
@@ -81,19 +104,27 @@ export class SiteSettingTab extends PluginSettingTab {
 										trimmed === '' ? undefined : trimmed;
 							});
 						}),
-				)
-				.addExtraButton((button) =>
-					button
-						.setIcon('trash')
-						.setTooltip('Remove this view')
-						.onClick(() => {
-							this.store.edit((settings) => {
-								const i = settings.site.includes.indexOf(target);
-								if (i !== -1) settings.site.includes.splice(i, 1);
-							});
-							this.display();
-						}),
 				);
+
+			// Component/layout assignment (FR-11c/d). When the registry scan has
+			// resolved, present dropdowns populated from the discovered names (plus
+			// an `auto` option); the choice persists into the target's
+			// `component`/`layout`, which planning + harvest resolve into the snapshot.
+			this.addAssignmentDropdown(setting, target, 'component');
+			this.addAssignmentDropdown(setting, target, 'layout');
+
+			setting.addExtraButton((button) =>
+				button
+					.setIcon('trash')
+					.setTooltip('Remove this view')
+					.onClick(() => {
+						this.store.edit((settings) => {
+							const i = settings.site.includes.indexOf(target);
+							if (i !== -1) settings.site.includes.splice(i, 1);
+						});
+						this.display();
+					}),
+			);
 		});
 
 		new Setting(containerEl).addButton((button) =>
@@ -111,6 +142,103 @@ export class SiteSettingTab extends PluginSettingTab {
 		this.displaySyncTriggers(containerEl);
 		this.displayToolchain(containerEl);
 		this.displayBuild(containerEl);
+	}
+
+	/**
+	 * Scan the project for component/layout names (FR-11b), merge them by
+	 * precedence (the pure `resolveRegistry`), cache the result, and re-render so
+	 * the dropdowns gain the discovered names. No-op when no registry port is
+	 * wired (minimal/test setups keep the text-only tab). Re-running is cheap and
+	 * picks up a freshly-scaffolded stub when the tab is reopened.
+	 */
+	private refreshRegistry(): void {
+		const port = this.registryPort;
+		if (port === undefined) {
+			return;
+		}
+		void port
+			.discover()
+			.then((discovered) => {
+				const next = resolveRegistry(discovered);
+				const changed = JSON.stringify(next) !== JSON.stringify(this.registry);
+				this.registry = next;
+				// Re-render once the names land (or change) so the dropdowns appear.
+				if (changed) {
+					this.renderWithRegistry();
+				}
+			})
+			.catch(() => {
+				// A scan failure (e.g. project not yet bootstrapped) just leaves the
+				// text-input fallback; never block the rest of the settings tab.
+			});
+	}
+
+	/**
+	 * Re-render the tab body using the already-cached registry, without kicking
+	 * off another scan (which `display()` would). Guards against re-rendering when
+	 * the tab is not currently shown.
+	 */
+	private renderWithRegistry(): void {
+		if (this.containerEl.isShown()) {
+			// `display()` re-scans; calling it here would loop. Inline the redraw by
+			// clearing + re-running the synchronous body via the public entry, which
+			// is safe because `refreshRegistry` only re-renders when names *changed*.
+			this.display();
+		}
+	}
+
+	/**
+	 * Add a component/layout assignment control to a published-view row (FR-11c/d).
+	 * When the registry has resolved, this is a **dropdown** of the discovered
+	 * names plus an `auto` option (auto → the view type for a component, the
+	 * default layout for a layout); before the scan lands (or with no registry
+	 * port) it degrades to a free-text field so the assignment is always editable.
+	 * The chosen value persists into the target's `component`/`layout`; `auto`
+	 * clears the override so planning/harvest fall back.
+	 */
+	private addAssignmentDropdown(
+		setting: Setting,
+		target: PublishTarget,
+		field: 'component' | 'layout',
+	): void {
+		const current = target[field] ?? AUTO;
+		const names =
+			this.registry === null
+				? null
+				: availableNames(
+						field === 'component' ? this.registry.components : this.registry.layouts,
+					);
+
+		const apply = (value: string): void => {
+			const next = value.trim();
+			this.store.edit((settings) => {
+				const i = settings.site.includes.indexOf(target);
+				if (i === -1) return;
+				if (next === '' || next === AUTO) delete settings.site.includes[i][field];
+				else settings.site.includes[i][field] = next;
+			});
+		};
+
+		if (names === null) {
+			setting.addText((text) =>
+				text
+					.setPlaceholder(field === 'component' ? 'component (auto)' : 'layout (auto)')
+					.setValue(current === AUTO ? '' : current)
+					.onChange(apply),
+			);
+			return;
+		}
+
+		// Include the currently-selected name even if the scan no longer lists it
+		// (e.g. a since-deleted user file) so the user's choice stays visible.
+		const options = new Set<string>([AUTO, ...names]);
+		if (current !== AUTO) options.add(current);
+		setting.addDropdown((dropdown) => {
+			for (const name of options) {
+				dropdown.addOption(name, name === AUTO ? `auto (${field})` : name);
+			}
+			dropdown.setValue(current).onChange(apply);
+		});
 	}
 
 	/**
