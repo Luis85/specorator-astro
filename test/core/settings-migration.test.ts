@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
 	DEFAULT_DEV_PORT,
+	DEFAULT_LIBRARY_FOLDER,
 	DEFAULT_LIVE_RESYNC,
 	SETTINGS_SCHEMA_VERSION,
 	defaultSettings,
 	migrate,
 } from '../../src/core/domain/settings-migration';
+
+/** The migration-safe default library block (folder set, consent NOT granted). */
+const DEFAULT_LIBRARY = { folder: DEFAULT_LIBRARY_FOLDER, consent: { granted: false } };
 
 describe('settings migration', () => {
 	it('returns safe defaults for junk / nothing persisted', () => {
@@ -23,9 +27,13 @@ describe('settings migration', () => {
 			toolchain: { port: DEFAULT_DEV_PORT },
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
+			library: DEFAULT_LIBRARY,
 		});
 		// Live re-sync ships off (opt-in), per FR-20 / D2.
 		expect(DEFAULT_LIVE_RESYNC).toBe(false);
+		// Component library: configurable folder set, consent NOT granted (FR-11f/18).
+		expect(DEFAULT_LIBRARY_FOLDER).toBe('Site/components');
+		expect(defaultSettings().library.consent.granted).toBe(false);
 	});
 
 	it('upgrades the original un-versioned { site } shape, defaulting new fields', () => {
@@ -44,6 +52,7 @@ describe('settings migration', () => {
 			toolchain: { port: DEFAULT_DEV_PORT },
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
+			library: DEFAULT_LIBRARY,
 		});
 	});
 
@@ -88,6 +97,7 @@ describe('settings migration', () => {
 			},
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
+			library: DEFAULT_LIBRARY,
 		});
 	});
 
@@ -98,6 +108,7 @@ describe('settings migration', () => {
 			toolchain: { port: DEFAULT_DEV_PORT },
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
+			library: DEFAULT_LIBRARY,
 		});
 		expect(migrate({ toolchain: { port: -1 } }).toolchain.port).toBe(DEFAULT_DEV_PORT);
 		expect(migrate({ toolchain: { port: 4321.5 } }).toolchain.port).toBe(DEFAULT_DEV_PORT);
@@ -124,6 +135,60 @@ describe('settings migration', () => {
 		expect(migrate({ export: { exportPath: '' } }).export).toEqual({});
 		expect(migrate({ export: { exportPath: '   ' } }).export).toEqual({});
 		expect(migrate({ export: { exportPath: 42 } }).export).toEqual({});
+	});
+
+	it('defaults the library block (folder set, consent NOT granted) for old data (migration-safe)', () => {
+		const v1WithoutLibrary = {
+			version: 1,
+			site: { includes: [] },
+			toolchain: { port: 4321 },
+			sync: { liveResync: false },
+			export: {},
+		};
+		expect(migrate(v1WithoutLibrary).library).toEqual(DEFAULT_LIBRARY);
+		// FR-18: consent is fail-closed by default — no schema bump needed, just filled in.
+		expect(migrate(v1WithoutLibrary).library.consent.granted).toBe(false);
+	});
+
+	it('preserves a configured library folder and a granted consent with provenance', () => {
+		const persisted = {
+			library: {
+				folder: '  Components  ',
+				consent: {
+					granted: true,
+					grantedVersion: 2,
+					grantedAt: '2026-05-25T00:00:00.000Z',
+				},
+			},
+		};
+		expect(migrate(persisted).library).toEqual({
+			folder: 'Components',
+			consent: { granted: true, grantedVersion: 2, grantedAt: '2026-05-25T00:00:00.000Z' },
+		});
+	});
+
+	it('FAIL-CLOSED: never reads a non-true granted flag as consent (FR-18 security)', () => {
+		// A truthy non-boolean, a string, a number, junk — none authorize execution.
+		expect(migrate({ library: { consent: { granted: 'yes' } } }).library.consent).toEqual({
+			granted: false,
+		});
+		expect(migrate({ library: { consent: { granted: 1 } } }).library.consent.granted).toBe(
+			false,
+		);
+		expect(migrate({ library: { consent: 'nope' } }).library.consent.granted).toBe(false);
+		expect(migrate({ library: 'nope' }).library).toEqual(DEFAULT_LIBRARY);
+	});
+
+	it('drops malformed provenance but keeps a valid grant', () => {
+		const r = migrate({
+			library: { consent: { granted: true, grantedVersion: 'x', grantedAt: 42 } },
+		});
+		expect(r.library.consent).toEqual({ granted: true });
+	});
+
+	it('defaults a blank library folder back to the standard authoring layout', () => {
+		expect(migrate({ library: { folder: '   ' } }).library.folder).toBe(DEFAULT_LIBRARY_FOLDER);
+		expect(migrate({ library: { folder: 42 } }).library.folder).toBe(DEFAULT_LIBRARY_FOLDER);
 	});
 
 	it('drops malformed includes and keeps optional fields only when non-empty', () => {

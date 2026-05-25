@@ -1,10 +1,12 @@
 import { debounce, type Plugin } from 'obsidian';
 import type { SiteConfig } from '../core/domain/types';
-import type { SettingsPort } from '../core/ports';
+import type { ComponentLibraryPort, SettingsPort } from '../core/ports';
+import { grantConsent, revokeConsent, type ConsentState } from '../core/domain/consent';
 import {
 	defaultSettings,
 	migrate,
 	type ExportConfig,
+	type LibraryConfig,
 	type SyncConfig,
 	type ToolchainConfig,
 	type VersionedSettings,
@@ -27,7 +29,7 @@ export type PluginSettings = VersionedSettings;
  * (NFR-8). Writes are debounced so editing the settings tab does not hit disk on
  * every keystroke.
  */
-export class SettingsStore implements SettingsPort {
+export class SettingsStore implements SettingsPort, ComponentLibraryPort {
 	private settings: PluginSettings = defaultSettings();
 	private readonly persist: () => void;
 
@@ -72,5 +74,39 @@ export class SettingsStore implements SettingsPort {
 	/** Snapshot the current build/export config (Export/Reveal destination, FR-22). */
 	readExportConfig(): ExportConfig {
 		return { ...this.settings.export };
+	}
+
+	/**
+	 * Snapshot the component-library config (folder + consent, FR-11f / FR-18).
+	 * The transpile use-case reads this through {@link ComponentLibraryPort} and
+	 * hard-gates on `consent`; the settings tab + consent command edit it.
+	 */
+	readLibraryConfig(): LibraryConfig {
+		const { library } = this.settings;
+		return { folder: library.folder, consent: { ...library.consent } };
+	}
+
+	/**
+	 * Record one-time build-execution consent (FR-18 / D11), stamping advisory
+	 * provenance (the schema version + an ISO timestamp). Persists immediately so
+	 * a crash after granting does not lose the user's decision.
+	 */
+	async grantLibraryConsent(): Promise<void> {
+		this.settings.library.consent = grantConsent(
+			this.settings.version,
+			new Date().toISOString(),
+		);
+		await this.save();
+	}
+
+	/** Revoke build-execution consent (FR-18: revocable); the gate shuts again. */
+	async revokeLibraryConsent(): Promise<void> {
+		this.settings.library.consent = revokeConsent();
+		await this.save();
+	}
+
+	/** The current consent state (for the consent command/UI to reflect). */
+	currentConsent(): ConsentState {
+		return { ...this.settings.library.consent };
 	}
 }

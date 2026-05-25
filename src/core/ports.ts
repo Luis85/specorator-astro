@@ -2,10 +2,52 @@ import type { ResolvedTarget, SiteConfig, ViewSnapshot } from './domain/types';
 import type { TemplateFile } from './domain/template';
 import type { AssetCopyTask, AssetLocation } from './usecases/resolve-assets';
 import type { DiscoveredRegistry } from './domain/registry';
+import type { LibraryConfig } from './domain/settings-migration';
+import type { TranspiledComponent } from './domain/component-transpile';
 
 /** Provides the user's site configuration (managed in the plugin's settings). */
 export interface SettingsPort {
 	readSiteConfig(): Promise<SiteConfig>;
+}
+
+/**
+ * Provides the vault component-library config — the library **folder** and the
+ * persisted, revocable build-execution **consent** (FR-11f, FR-18 / D11). The
+ * pure `TranspileLibrary` use-case reads this and **hard-gates** on the consent:
+ * when consent is not granted the transpile/emit step is a NO-OP (no `.astro`
+ * is ever generated or executed). Persistence lives in the settings adapter.
+ */
+export interface ComponentLibraryPort {
+	/** Snapshot the library folder + persisted consent state. */
+	readLibraryConfig(): LibraryConfig;
+}
+
+/**
+ * Reads the vault component-library notes and writes transpiled `.astro` modules
+ * into the project's `src/generated/` tree (FR-11f/g; DESIGN §5.6). The
+ * **decision** of what to emit (parse + transpile + skip) is pure
+ * (`transpileComponentNote`); this port is the thin I/O seam:
+ *
+ * - `readLibraryNotes` returns the raw markdown of every note in the configured
+ *   library folder (via the Vault API + `cachedRead`), each tagged with its
+ *   vault path so a skip can be reported usefully.
+ * - `writeGenerated` writes the transpiled files under `src/generated/` ONLY —
+ *   it **never deletes** vault content or hand-written `user/` files (NFR-9). It
+ *   replaces the generated tier it owns so removed/renamed component notes don't
+ *   leave stale modules, but that replacement is scoped to `src/generated/`.
+ *
+ * `child_process` is NOT used here and NEVER spawns content-derived commands;
+ * the only build-time execution is the consented Astro build of the emitted
+ * components (the inherent, disclosed risk — DESIGN §5.10).
+ */
+export interface ComponentLibraryTranspilePort {
+	/** Read every component-library note's raw markdown (path + contents). */
+	readLibraryNotes(folder: string): Promise<{ path: string; raw: string }[]>;
+	/**
+	 * Write the transpiled components into `src/generated/` (generated tier only,
+	 * NFR-9). Replaces the generated component set so stale modules are cleared.
+	 */
+	writeGenerated(components: readonly TranspiledComponent[]): Promise<void>;
 }
 
 /** Harvests one `(base, view)` target into a serializable snapshot. */

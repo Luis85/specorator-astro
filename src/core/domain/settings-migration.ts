@@ -14,10 +14,19 @@
  * Node.
  */
 
+import { defaultConsent, type ConsentState } from './consent';
 import type { PublishTarget, SiteConfig } from './types';
 
 /** The current settings schema version. Bump on any breaking shape change. */
 export const SETTINGS_SCHEMA_VERSION = 1;
+
+/**
+ * Default vault folder for the code-fence component library (FR-11f / FR-8 /
+ * D19): each component is a frontmatter markdown note here, transpiled into
+ * `src/generated/` behind consent. Configurable in settings; this is the
+ * out-of-the-box `Site/components` authoring layout.
+ */
+export const DEFAULT_LIBRARY_FOLDER = 'Site/components';
 
 /** Obsidian's default dev-server port (D19); auto-fallback happens at runtime. */
 export const DEFAULT_DEV_PORT = 4321;
@@ -67,6 +76,21 @@ export interface ExportConfig {
 	exportPath?: string;
 }
 
+/**
+ * Vault component-library settings (FR-11f/g, FR-18 / D11). Holds the
+ * configurable library folder (where component notes live) and the persisted,
+ * revocable build-execution **consent** that hard-gates transpiling those notes
+ * into executable `src/generated/` modules. Consent defaults to NOT granted —
+ * the safe `theme/` components are the default path; code-fence components do
+ * nothing until the user opts in (and can revoke).
+ */
+export interface LibraryConfig {
+	/** Vault folder the component notes live in (default `Site/components`). */
+	folder: string;
+	/** Persisted, revocable one-time build-execution consent (FR-18). */
+	consent: ConsentState;
+}
+
 /** The whole persisted settings document, carrying its schema version. */
 export interface VersionedSettings {
 	/** Schema version of this persisted document (forward-migration anchor). */
@@ -79,6 +103,8 @@ export interface VersionedSettings {
 	sync: SyncConfig;
 	/** Build/export configuration (the Export/Reveal destination). */
 	export: ExportConfig;
+	/** Vault component-library folder + build-execution consent (FR-11f, FR-18). */
+	library: LibraryConfig;
 }
 
 /** Fresh defaults for a vault that has never persisted settings. */
@@ -89,6 +115,7 @@ export function defaultSettings(): VersionedSettings {
 		toolchain: { port: DEFAULT_DEV_PORT },
 		sync: { liveResync: DEFAULT_LIVE_RESYNC },
 		export: {},
+		library: { folder: DEFAULT_LIBRARY_FOLDER, consent: defaultConsent() },
 	};
 }
 
@@ -161,6 +188,42 @@ function parseExport(raw: unknown): ExportConfig {
 }
 
 /**
+ * Tolerantly parse the persisted consent state (FR-18 / D11). The gate is
+ * **fail-closed**: only an explicit `granted === true` boolean opens it; any
+ * other shape (absent, junk, a truthy non-boolean) is treated as NOT granted, so
+ * a corrupted/hostile blob can never silently authorize build-time execution.
+ * Advisory provenance (`grantedVersion`/`grantedAt`) is preserved only when
+ * sensibly typed.
+ */
+function parseConsent(raw: unknown): ConsentState {
+	if (!isRecord(raw) || raw.granted !== true) {
+		return defaultConsent();
+	}
+	const consent: ConsentState = { granted: true };
+	if (typeof raw.grantedVersion === 'number' && Number.isFinite(raw.grantedVersion)) {
+		consent.grantedVersion = raw.grantedVersion;
+	}
+	if (typeof raw.grantedAt === 'string' && raw.grantedAt.trim() !== '') {
+		consent.grantedAt = raw.grantedAt;
+	}
+	return consent;
+}
+
+/**
+ * Tolerantly parse the component-library config (FR-11f, FR-18): the library
+ * folder defaults to {@link DEFAULT_LIBRARY_FOLDER} when absent/blank, and the
+ * consent sub-shape is fail-closed via {@link parseConsent}. Migration-safe: old
+ * data lacking `library` gets the safe default (folder set, consent NOT granted).
+ */
+function parseLibrary(raw: unknown): LibraryConfig {
+	const folder =
+		isRecord(raw) && typeof raw.folder === 'string' && raw.folder.trim() !== ''
+			? raw.folder.trim()
+			: DEFAULT_LIBRARY_FOLDER;
+	return { folder, consent: parseConsent(isRecord(raw) ? raw.consent : undefined) };
+}
+
+/**
  * Upgrade any persisted settings blob to the current versioned schema.
  *
  * Handles three input classes:
@@ -169,9 +232,10 @@ function parseExport(raw: unknown): ExportConfig {
  *   defaulted `toolchain`/`sync`.
  * - **a current versioned document** → re-parsed defensively (idempotent).
  *
- * New optional fields (e.g. `sync.liveResync` and `export.exportPath`, added
- * after v1) are *defaulted* for old persisted data by the tolerant per-field
- * parsers below — so no schema bump is needed since no existing data is
+ * New optional fields (e.g. `sync.liveResync`, `export.exportPath`, and the
+ * `library` block with its **fail-closed** consent, all added after v1) are
+ * *defaulted* for old persisted data by the tolerant per-field parsers below —
+ * so no schema bump is needed since no existing data is
  * transformed, only filled in.
  *
  * Always returns a fully-populated, valid {@link VersionedSettings}; never throws.
@@ -190,5 +254,6 @@ export function migrate(persisted: unknown): VersionedSettings {
 		toolchain: parseToolchain(persisted.toolchain),
 		sync: parseSync(persisted.sync),
 		export: parseExport(persisted.export),
+		library: parseLibrary(persisted.library),
 	};
 }
