@@ -15,6 +15,7 @@
  * and the mapper is unit-testable with plain in-memory fakes.
  */
 
+import { resolveBinding } from './registry';
 import { joinRoute, slugifySegment } from './routing';
 import type {
 	BasesPropertyId,
@@ -321,6 +322,12 @@ export function buildViewSnapshot(inputs: HarvestInputs): ViewSnapshot {
 	const resolveRoute: EntryRouteResolver = (entry) =>
 		joinRoute(target.route, slugifySegment(entry.file.basename));
 
+	// Resolve the stored assignment against the known view type so the snapshot's
+	// `render` carries the concrete component/layout names — `'auto'` collapses to
+	// the view type / default layout here (FR-11c; §5.6). `[...slug].astro`
+	// applies the same fallbacks, so snapshot and template agree.
+	const render = resolveBinding(target, viewType);
+
 	return {
 		baseId: baseIdFromPath(target.basePath),
 		route: target.route,
@@ -331,7 +338,7 @@ export function buildViewSnapshot(inputs: HarvestInputs): ViewSnapshot {
 			order,
 			...(groupBy ? { groupBy } : {}),
 		},
-		render: { component: target.component, layout: target.layout },
+		render,
 		groups: mapGroups(groupedData, order, resolveRoute, readBody),
 		generatedAt,
 	};
