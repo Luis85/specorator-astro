@@ -11,7 +11,7 @@
  * Kept out of the fast `npm run verify` loop (it installs Astro + builds);
  * runs as its own CI step.
  */
-import { cp, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -217,6 +217,69 @@ async function assertDetailRoutes(dist) {
 	console.log('[verify:template] OK — per-entry detail pages built; body/callout/link rendered.');
 }
 
+/** Read every bundled stylesheet under dist/_astro and concatenate in name order. */
+async function readBundledCss(dist) {
+	const astroDir = path.join(dist, '_astro');
+	const names = (await readdir(astroDir)).filter((n) => n.endsWith('.css')).sort();
+	if (names.length === 0) {
+		throw new Error(
+			'theme cascade: no bundled CSS found under dist/_astro (expected token sheet).',
+		);
+	}
+	const parts = await Promise.all(names.map((n) => readFile(path.join(astroDir, n), 'utf8')));
+	return parts.join('\n/* --- next bundle --- */\n');
+}
+
+/**
+ * Verify the C9 token cascade (docs/DESIGN.md §5.6, D9; FR-11a/NFR-7): the
+ * template's default tokens load FIRST and the user-owned src/user/theme.css
+ * loads LAST, so a `--sp-*` token redefined in theme.css wins over the default
+ * with NO component edits. The fixture's overlaid theme.css redefines
+ * `--sp-color-accent` to a sentinel (#abcdef) and adds an unminifiable marker
+ * property; this asserts STRUCTURALLY on the built CSS bundle that the override
+ * shipped and is ordered after the default token block (so it wins by cascade).
+ */
+async function assertThemeOverrideCascade(dist) {
+	const css = await readBundledCss(dist);
+
+	// 1) The default token sheet shipped: the light `:root` accent default is present.
+	const defaultAccent = '--sp-color-accent: #3b5bdb';
+	assertIncludes(css, defaultAccent, 'theme cascade default token');
+
+	// 2) The user override shipped: the fixture theme.css sentinel value is present,
+	//    and its unminifiable marker proves theme.css content reached the bundle.
+	const overrideAccent = '--sp-color-accent: #abcdef';
+	assertIncludes(css, overrideAccent, 'theme cascade user override value');
+	assertIncludes(
+		css,
+		'--sp-fixture-override-marker: applied',
+		'theme cascade user override marker',
+	);
+
+	// 3) Cascade order: the default `:root` accent appears BEFORE the user override.
+	//    Same-specificity rules ⇒ the later (theme.css) wins. This is the structural
+	//    proof that theme.css loads after the default tokens, so the user value wins
+	//    without touching any component (BaseLayout imports tokens.css then theme.css).
+	assertOrder(
+		css,
+		defaultAccent,
+		overrideAccent,
+		'theme cascade order (tokens before theme.css)',
+	);
+
+	// 4) Dark mode is token-driven too: the dark palette is present via both the
+	//    prefers-color-scheme media query and the explicit [data-theme] hook (D9).
+	assertIncludes(css, 'prefers-color-scheme:dark', 'theme dark mode (OS preference)');
+	assertIncludes(css, '[data-theme=dark]', 'theme dark mode (explicit hook)');
+
+	// 5) Responsiveness: fluid type tokens use clamp() so type scales phone→desktop.
+	assertIncludes(css, 'clamp(', 'theme fluid responsive type');
+
+	console.log(
+		'[verify:template] OK — user theme.css overrides default tokens (cascade: tokens→theme.css); dark + fluid tokens present.',
+	);
+}
+
 async function main() {
 	const work = await mkdtemp(path.join(tmpdir(), 'specorator-template-'));
 	console.log(`[verify:template] Staging template in ${work}`);
@@ -276,6 +339,11 @@ async function main() {
 			}
 		}
 		console.log('[verify:template] OK — referenced assets + placeholder emitted into dist/.');
+
+		// C9: assert the token cascade — the user-owned src/user/theme.css (overlaid
+		// by the fixture with a sentinel token override) wins over the template's
+		// default tokens in the built CSS, with no component edits (D9; FR-11a/NFR-7).
+		await assertThemeOverrideCascade(dist);
 
 		console.log('[verify:template] OK — astro check + build succeeded; static routes emitted.');
 	} finally {
