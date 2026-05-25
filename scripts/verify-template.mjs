@@ -11,12 +11,16 @@
  * Kept out of the fast `npm run verify` loop (it installs Astro + builds);
  * runs as its own CI step.
  */
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+// FIX 2 (TEST-6(b)): import the PURE transpiler (core, no obsidian/Node/I/O) so the
+// verify gate can feed REAL `transpileComponentNote` output through `astro build`/
+// `check`, not a hand-authored mirror. This is the only core import the gate makes.
+import { transpileComponentNote } from '../src/core/domain/component-transpile.ts';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const templateRoot = path.join(repoRoot, 'templates', 'astro');
@@ -398,6 +402,199 @@ async function assertNavigation(dist) {
 	);
 }
 
+/**
+ * FIX 1 — route-collision de-dup defense in `[...slug].astro`'s getStaticPaths
+ * (matching the core route table's pages > listings > details precedence). The
+ * fixture commits BOTH a standalone page `/collide` (pages.json) and a listing
+ * snapshot whose route is `/collide` (snapshots/collide.json). With no de-dup
+ * Astro throws "duplicate route" and `astro build` HARD-FAILS; that this build
+ * even reached the assertions proves the collision was resolved. Assert the PAGE
+ * won (matching core precedence) — the listing's view did not render.
+ */
+async function assertRouteCollisionDedup(dist) {
+	const file = path.join(dist, 'collide', 'index.html');
+	if (!(await exists(file))) {
+		throw new Error(
+			`Colliding route /collide missing — getStaticPaths de-dup dropped it: ${file}`,
+		);
+	}
+	const html = await readFile(file, 'utf8');
+	// The standalone page won the route (pages > listings, core precedence).
+	assertIncludes(html, 'class="sp-page"', '/collide page won the collision');
+	assertIncludes(html, 'WON the /collide route', '/collide page body rendered');
+	// The losing listing's heading must NOT have rendered at this route.
+	if (html.includes('Collide listing (should LOSE to the page)')) {
+		throw new Error(
+			'/collide: the listing rendered — page should have won the route collision.',
+		);
+	}
+	console.log(
+		'[verify:template] OK — colliding page/listing route de-duped (page wins); build did not hard-fail.',
+	);
+}
+
+/**
+ * FIX 3 — structural breadcrumb fallback for a detail route that is NOT a curated
+ * nav node (navigation.ts `breadcrumbsFor`). `/films/stalker` is a detail page,
+ * and the fixture nav curates only the `/films` listing, so the curated trail
+ * returns nothing and the old code emitted just `[Home]` (suppressed by the
+ * `crumbs.length > 1` guard). Assert the page now renders a multi-crumb trail
+ * derived from the route segments: Home › Films › Stalker.
+ */
+async function assertStructuralBreadcrumbFallback(dist) {
+	const file = path.join(dist, 'films', 'stalker', 'index.html');
+	const html = await readFile(file, 'utf8');
+	assertIncludes(
+		html,
+		'class="sp-breadcrumbs"',
+		'/films/stalker breadcrumbs present (non-nav route)',
+	);
+	const crumbList = sliceBetween(html, 'sp-breadcrumb-list', '</ol>');
+	// Home → Films (linked ancestor) → Stalker (current page). Films reuses the
+	// curated node's link; Stalker is the humanized, route-less current crumb.
+	assertOrder(crumbList, 'href="/"', 'href="/films"', '/films/stalker crumb order (Home→Films)');
+	assertOrder(
+		crumbList,
+		'href="/films"',
+		'aria-current="page"',
+		'/films/stalker crumb order (→Stalker)',
+	);
+	assertIncludes(crumbList, '>Stalker</span>', '/films/stalker final crumb (humanized segment)');
+	console.log(
+		'[verify:template] OK — non-nav detail route gets a structural Home›Section›Entry breadcrumb (FIX 3).',
+	);
+}
+
+/**
+ * FIX 5 — graceful cascade→placeholder fallback. A snapshot whose
+ * `render.component` names a component that exists in NO registry tier
+ * (`DoesNotExist`) must resolve to `views.placeholder` (registry.ts `resolveView`
+ * falls back to the placeholder slot) rather than crashing the build. The fixture
+ * overlays a user-owned `placeholder` view that shadows the theme default, so the
+ * resolved placeholder slot is the user one (`data-view="user-placeholder"`) —
+ * exactly proving the unknown name routed through `views.placeholder`. The route
+ * having built at all proves the build did not hard-fail on the unknown component.
+ */
+async function assertMissingComponentPlaceholder(dist) {
+	const file = path.join(dist, 'missing-comp', 'index.html');
+	if (!(await exists(file))) {
+		throw new Error(
+			`Missing-component route /missing-comp absent — build crashed instead of degrading: ${file}`,
+		);
+	}
+	const html = await readFile(file, 'utf8');
+	// The unknown component name fell back to the placeholder slot (registry's
+	// `views[name] ?? views.placeholder`), which the fixture's user override owns.
+	assertIncludes(
+		html,
+		'data-view="user-placeholder"',
+		'/missing-comp placeholder fallback rendered',
+	);
+	assertIncludes(
+		html,
+		'data-shadow-marker="user-wins"',
+		'/missing-comp resolved the placeholder slot',
+	);
+	console.log(
+		'[verify:template] OK — unknown render.component degrades to the placeholder slot, not a build crash (FIX 5).',
+	);
+}
+
+/**
+ * A representative **component note** (DESIGN §5.6 shape): `component:` frontmatter
+ * with a `name`, `kind`, and declared `props`, plus exactly one ` ```astro ` fence
+ * whose authored block opens with its OWN `---` script (the case the transpiler's
+ * `composeAstro` splices the generated props-destructure into — the splice most
+ * likely to break). Kept inline so the fixture is the EXACT input the real
+ * transpiler sees. `data-transpiled-marker` is the sentinel asserted in the build.
+ */
+const TRANSPILED_COMPONENT_NOTE = `---
+component:
+  name: TranspiledCard
+  kind: view
+  appliesTo: [list]
+  props: [snapshot]
+---
+
+Some prose above the fence (ignored by the transpiler).
+
+\`\`\`astro
+---
+import type { EntrySnapshot, EntryGroup, ViewSnapshot } from '../../content/schema';
+const snap = snapshot as ViewSnapshot | undefined;
+const entries: EntrySnapshot[] = snap ? snap.groups.flatMap((g: EntryGroup) => g.entries) : [];
+---
+<section class="sp-transpiled" data-view="transpiled-card">
+	<p data-transpiled-marker="ok">Rendered by the TRANSPILED component.</p>
+	<ul>
+		{entries.map((entry) => (
+			<li>
+				<a href={entry.route}>{entry.basename}</a>
+			</li>
+		))}
+	</ul>
+</section>
+\`\`\`
+`;
+
+/**
+ * FIX 2 (TEST-6(b)): run the PURE `transpileComponentNote` over a representative
+ * component note and write its EMITTED `.astro` into the staged `src/generated/`
+ * tier (the path the transpiler itself returns), so the staged `astro check`/build
+ * compiles the transpiler's REAL output. Throws if the transpiler skipped the note
+ * (a regression in its own right). The `/transpiled` snapshot fixture routes
+ * `render.component: "TranspiledCard"` so the generated component actually renders.
+ */
+async function stageTranspiledComponent(work) {
+	const result = transpileComponentNote(TRANSPILED_COMPONENT_NOTE);
+	if (result.outcome !== 'transpiled') {
+		throw new Error(
+			`FIX 2: transpileComponentNote SKIPPED the representative note (${result.reason}); ` +
+				'the compile-smoke fixture is no longer a valid component note.',
+		);
+	}
+	const target = path.join(work, ...result.path.split('/'));
+	await mkdir(path.dirname(target), { recursive: true });
+	await writeFile(target, result.contents, 'utf8');
+	console.log(
+		`[verify:template] Staged REAL transpiler output -> ${result.path} (TEST-6b compile smoke).`,
+	);
+}
+
+/**
+ * FIX 2 (TEST-6(b)): assert the generated component emitted by the REAL transpiler
+ * compiled and rendered. The `/transpiled` route routes to `TranspiledCard` (staged
+ * from `transpileComponentNote` output); a bad props-script splice or malformed
+ * emit would have failed `astro check`/build before this. Assert the sentinel
+ * markup and that the authored body (entry list) rendered through the props.
+ */
+async function assertTranspiledComponentCompiled(dist) {
+	const file = path.join(dist, 'transpiled', 'index.html');
+	if (!(await exists(file))) {
+		throw new Error(
+			`Transpiled-component route /transpiled missing — its build failed: ${file}`,
+		);
+	}
+	const html = await readFile(file, 'utf8');
+	assertIncludes(
+		html,
+		'data-view="transpiled-card"',
+		'/transpiled real transpiler output rendered',
+	);
+	assertIncludes(
+		html,
+		'data-transpiled-marker="ok"',
+		'/transpiled sentinel from transpiled block',
+	);
+	// The authored block read the declared `snapshot` prop (via the transpiler's
+	// generated destructure) and rendered the entry — proving the props-script
+	// splice produced working code, not just valid syntax.
+	assertIncludes(html, '>Sample</a>', '/transpiled entry rendered via spliced props destructure');
+	console.log(
+		'[verify:template] OK — REAL transpileComponentNote output compiled + rendered (TEST-6b smoke).',
+	);
+}
+
 /** Read every bundled stylesheet under dist/_astro and concatenate in name order. */
 async function readBundledCss(dist) {
 	const astroDir = path.join(dist, '_astro');
@@ -496,12 +693,14 @@ async function assertSeoAndSitemap(dist) {
 	// the canonical origin from data/site.json into the sitemap, not a placeholder).
 	assertIncludes(urlSet, 'https://example.com/', 'sitemap uses configured site origin');
 	// Coverage: a static listing route AND a `[...slug]` detail route both appear,
-	// so the sitemap crawls the full statically-generated route table (FR-14). Astro
-	// emits canonical <loc>s with its default trailing slash, so match that form.
-	assertIncludes(urlSet, '<loc>https://example.com/books/</loc>', 'sitemap static route /books');
+	// so the sitemap crawls the full statically-generated route table (FR-14). With
+	// `trailingSlash: 'never'` (astro.config.mjs), <loc>s carry NO trailing slash —
+	// matching the slashless internal links (FIX 4: canonical/sitemap/internal-link
+	// form is consistent).
+	assertIncludes(urlSet, '<loc>https://example.com/books</loc>', 'sitemap static route /books');
 	assertIncludes(
 		urlSet,
-		'<loc>https://example.com/books/dune/</loc>',
+		'<loc>https://example.com/books/dune</loc>',
 		'sitemap [...slug] route /books/dune',
 	);
 
@@ -520,8 +719,8 @@ async function assertSeoAndSitemap(dist) {
 	// 3) Canonical + OpenGraph tags (FR-23): BaseLayout emits them off Astro.site +
 	//    the page path ONLY when a site URL is configured. Assert on two route types.
 	const seoPages = {
-		listing: [path.join(dist, 'books', 'index.html'), 'https://example.com/books/'],
-		detail: [path.join(dist, 'books', 'dune', 'index.html'), 'https://example.com/books/dune/'],
+		listing: [path.join(dist, 'books', 'index.html'), 'https://example.com/books'],
+		detail: [path.join(dist, 'books', 'dune', 'index.html'), 'https://example.com/books/dune'],
 	};
 	for (const [label, [file, canonical]] of Object.entries(seoPages)) {
 		const html = await readFile(file, 'utf8');
@@ -549,6 +748,12 @@ async function main() {
 		if (await exists(fixtureRoot)) {
 			await cp(fixtureRoot, work, { recursive: true });
 		}
+
+		// FIX 2 (TEST-6(b)): emit a generated component from the REAL transpiler and
+		// stage it, so the build compiles `transpileComponentNote`'s actual output
+		// (not a hand-authored mirror). A transpiler bug — e.g. a bad props-script
+		// splice — would now break `astro check`/build here.
+		await stageTranspiledComponent(work);
 
 		await run('npm', ['install', '--legacy-peer-deps', '--no-audit', '--no-fund'], work);
 
@@ -630,6 +835,24 @@ async function main() {
 		// static build emits sitemap.xml covering static + [...slug] routes and
 		// BaseLayout emits canonical/OG tags; output stays static (FR-14/FR-23).
 		await assertSeoAndSitemap(dist);
+
+		// FIX 1: a deliberately-colliding page+listing route de-dups (page wins)
+		// instead of hard-failing `astro build` with a duplicate-route error.
+		await assertRouteCollisionDedup(dist);
+
+		// FIX 3: a detail route that is NOT a curated nav node still gets a
+		// structural Home›Section›Entry breadcrumb trail (not just `[Home]`).
+		await assertStructuralBreadcrumbFallback(dist);
+
+		// FIX 5: a snapshot naming an unknown render.component degrades to the
+		// theme placeholder (registry fallback) rather than crashing the build.
+		await assertMissingComponentPlaceholder(dist);
+
+		// FIX 2 (TEST-6(b)): the REAL transpiler output compiled + rendered. The
+		// component was emitted by `transpileComponentNote` into the staged
+		// `src/generated/` tier before this build; assert its route built and
+		// rendered the authored markup, closing the mandated compile smoke.
+		await assertTranspiledComponentCompiled(dist);
 
 		console.log('[verify:template] OK — astro check + build succeeded; static routes emitted.');
 	} finally {

@@ -31,6 +31,24 @@
 			"view": "Library",
 			"route": "/library",
 			"file": "snapshots/library.json"
+		},
+		{
+			"baseId": "collide",
+			"view": "Collide listing (should LOSE to the page)",
+			"route": "/collide",
+			"file": "snapshots/collide.json"
+		},
+		{
+			"baseId": "missing-comp",
+			"view": "Missing component",
+			"route": "/missing-comp",
+			"file": "snapshots/missing-comp.json"
+		},
+		{
+			"baseId": "transpiled",
+			"view": "Transpiled component smoke",
+			"route": "/transpiled",
+			"file": "snapshots/transpiled.json"
 		}
 	]
 }

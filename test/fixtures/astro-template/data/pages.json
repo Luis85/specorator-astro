@@ -23,6 +23,17 @@
 				"format": "markdown",
 				"content": "About body. We recommend [Dune](/books/dune) as a starting point.\n"
 			}
+		},
+		{
+			"path": "Site/pages/Collide.md",
+			"route": "/collide",
+			"title": "Collide page (must WIN over the listing)",
+			"isHome": false,
+			"frontmatter": { "title": "Collide page (must WIN over the listing)" },
+			"body": {
+				"format": "markdown",
+				"content": "This standalone page WON the /collide route over the listing snapshot.\n"
+			}
 		}
 	]
 }
