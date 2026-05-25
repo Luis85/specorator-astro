@@ -34,8 +34,17 @@ export function normalizeRoute(route: string): string {
 /**
  * Derive the breadcrumb trail for `route` against a resolved {@link NavigationTree}
  * (mirrors core `breadcrumbsFor`). A synthetic home crumb (`/`) leads every
- * non-home trail; the home route's trail is just `[Home]`; an off-menu route
- * falls back to `[Home]`.
+ * non-home trail; the home route's trail is just `[Home]`; the home route's trail
+ * is just `[Home]`.
+ *
+ * When `route` is a literal node in the curated nav, the curated ancestor chain is
+ * used. Most detail routes (e.g. `/films/stalker`) are NOT curated nav nodes, so
+ * the curated walk returns nothing and `Breadcrumbs.astro`'s `crumbs.length > 1`
+ * guard would suppress the trail. To keep detail pages navigable, fall back to a
+ * **structural** trail derived from the route's path segments (Home › Section ›
+ * Entry): each leading segment becomes an ancestor crumb, reusing the curated
+ * title/link when a segment's route is itself a known nav node, otherwise a
+ * humanized label; the final segment is the current (route-less) page crumb.
  */
 export function breadcrumbsFor(route: string, tree: NavigationTree): Crumb[] {
 	const target = normalizeRoute(route);
@@ -44,13 +53,65 @@ export function breadcrumbsFor(route: string, tree: NavigationTree): Crumb[] {
 		return [home];
 	}
 	const trail = findTrail(tree.items, target);
-	if (trail === null) {
-		return [home];
+	if (trail !== null) {
+		if (trail.length > 0 && trail[0].route === '/') {
+			return trail;
+		}
+		return [home, ...trail];
 	}
-	if (trail.length > 0 && trail[0].route === '/') {
-		return trail;
+	// Off-menu route: derive a structural trail from the path segments so detail
+	// pages (and any uncurated route) still get a multi-crumb breadcrumb.
+	return [home, ...structuralTrail(target, tree)];
+}
+
+/**
+ * Build a Section › … › Entry trail from a normalized route's path segments. Each
+ * cumulative prefix is an ancestor: if that prefix route is a known nav node, its
+ * curated title + link is reused; otherwise the segment is humanized into a label.
+ * The deepest segment is the current page — route-less so `Breadcrumbs.astro` marks
+ * it `aria-current="page"` rather than linking it.
+ */
+function structuralTrail(target: string, tree: NavigationTree): Crumb[] {
+	const segments = target.split('/').filter((s) => s !== '');
+	const crumbs: Crumb[] = [];
+	let prefix = '';
+	for (let i = 0; i < segments.length; i++) {
+		prefix = `${prefix}/${segments[i]}`;
+		const route = normalizeRoute(prefix);
+		const isLast = i === segments.length - 1;
+		const curated = findNode(tree.items, route);
+		const title = curated?.title ?? humanizeSegment(segments[i]);
+		// The deepest segment is the current page: route-less so it is not linked.
+		crumbs.push(isLast ? { title } : { title, route });
 	}
-	return [home, ...trail];
+	return crumbs;
+}
+
+/** Find the nav node whose route matches `target` (depth-first), or null. */
+function findNode(items: readonly NavNode[], target: string): NavNode | null {
+	for (const node of items) {
+		if (node.route !== undefined && normalizeRoute(node.route) === target) {
+			return node;
+		}
+		const deeper = findNode(node.children, target);
+		if (deeper !== null) {
+			return deeper;
+		}
+	}
+	return null;
+}
+
+/** Humanize a route segment into a crumb title (`my-entry` → `My Entry`). */
+function humanizeSegment(segment: string): string {
+	const words = segment
+		.replace(/[-_]+/g, ' ')
+		.trim()
+		.split(/\s+/)
+		.filter((w) => w !== '');
+	if (words.length === 0) {
+		return segment;
+	}
+	return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 /** Depth-first search for the ancestor chain (root→match) to `target`. */
