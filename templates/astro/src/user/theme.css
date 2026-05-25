@@ -1,0 +1,32 @@
+/*
+ * User-owned theme overrides (the single re-skin surface — docs/DESIGN.md §5.6,
+ * D9). Created once on first bootstrap and NEVER overwritten when the plugin's
+ * bundled template is upgraded (FR-11a / NFR-7).
+ *
+ * BaseLayout imports the default tokens (src/theme/styles/tokens.css) FIRST and
+ * this file LAST, so any --sp-* token you redefine here wins by cascade order —
+ * with NO edits to any view/layout component. Nothing below is required; the
+ * defaults stand on their own. Uncomment and tweak to taste.
+ *
+ *   :root {
+ *     --- Brand / accent ---
+ *     --sp-color-accent: #e8590c;
+ *     --sp-color-accent-contrast: #ffffff;
+ *
+ *     --- Surface + text ---
+ *     --sp-color-bg: #fffaf5;
+ *     --sp-color-surface: #fff1e6;
+ *     --sp-color-fg: #2b2118;
+ *     --sp-color-muted: #7a6a5a;
+ *     --sp-color-border: #e7d6c4;
+ *
+ *     --- Type, spacing, radius, layout ---
+ *     --sp-font-body: 'Georgia', serif;
+ *     --sp-space: 1.1rem;
+ *     --sp-radius: 0.75rem;
+ *     --sp-maxwidth: 72rem;
+ *   }
+ *
+ * To force a single color mode regardless of the visitor's OS preference, set
+ * data-theme on <html> via a user/ layout override, e.g. <html data-theme="dark">.
+ */

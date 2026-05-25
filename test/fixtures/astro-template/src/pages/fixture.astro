@@ -1,0 +1,19 @@
+---
+/*
+ * verify:template fixture (C1).
+ *
+ * Overlaid onto a working copy of templates/astro by scripts/verify-template.mjs
+ * to prove the scaffolded project's layout + registry seam compiles and builds
+ * to a real route via `astro check` + `astro build`. C5 replaces this with real
+ * fixture snapshot rendering; for C1 it asserts the bootstrap-ready template is
+ * a runnable Astro project.
+ */
+import { resolveLayout, resolveView } from '../registry';
+
+const BaseLayout = resolveLayout('BaseLayout');
+const Placeholder = resolveView('placeholder');
+---
+
+<BaseLayout title="Fixture route">
+	<Placeholder heading="Fixture build OK" />
+</BaseLayout>

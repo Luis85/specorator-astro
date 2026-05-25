@@ -3,10 +3,10 @@
 Turn the collections you already keep in Obsidian into a real, good-looking
 website — and preview that website **inside Obsidian** while you work.
 
-> **Status:** in design / pre-release. This repository currently contains the
-> design and requirements (see [`docs/DESIGN.md`](docs/DESIGN.md) and
-> [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)); the plugin itself is being
-> built. The sections below describe the experience it is designed to deliver.
+> **Status:** beta. The plugin is installable via [BRAT](#installing-beta-via-brat)
+> (or manually from a release) and covers the core experience described below.
+> The full design and requirements live in [`docs/DESIGN.md`](docs/DESIGN.md) and
+> [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).
 
 ## What it does
 
@@ -50,6 +50,17 @@ While in beta, install with the
    `Luis85/specorator-astro`.
 3. Enable **Specorator Astro Viewer** in Settings → Community plugins.
 
+### Manual install (from a release)
+
+Prefer not to use BRAT? Install by hand:
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from a
+   [release](https://github.com/Luis85/specorator-astro/releases).
+2. Copy all three into `<vault>/.obsidian/plugins/specorator-astro-viewer/`
+   (create the folder if it doesn't exist).
+3. Reload Obsidian, then enable **Specorator Astro Viewer** in Settings →
+   Community plugins.
+
 A later release will be submitted to the official Community Plugins directory.
 
 ## Using it
@@ -84,6 +95,10 @@ must be explicitly enabled (see the note below).
       a folder **outside your vault** (the plugin's data folder); it also opens
       your local preview URL in the Web Viewer. It does not send your content
       anywhere and includes no telemetry.
+    - **First-run setup downloads dependencies from the npm registry:** the one-time
+      project bootstrap runs `npm install`, which fetches Astro and its dependencies
+      over the network. This is the only network access the plugin makes; your notes
+      are never uploaded.
     - The optional custom-component feature **executes the code you put in
       component notes at build time**, just like any build tool. Only enable it
       for component notes you trust (e.g. ones you wrote) — not notes received from

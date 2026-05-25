@@ -1,0 +1,28 @@
+---
+/*
+ * Fixture-only USER-tier component with the SAME name as the generated one. It
+ * must be SHADOWED by `src/generated/views/LibraryCard.astro` (FR-11j precedence
+ * generated → user → theme). If the registry ever picked this lower tier, the
+ * verify:template assertion on the `/library` route would catch it: the gate
+ * asserts the generated sentinel renders and this user marker does NOT.
+ */
+import type { EntrySnapshot, EntryGroup, ViewSnapshot } from '../../content/schema';
+
+interface Props {
+	snapshot?: ViewSnapshot;
+}
+
+const { snapshot } = Astro.props;
+const entries: EntrySnapshot[] = snapshot
+	? snapshot.groups.flatMap((group: EntryGroup) => group.entries)
+	: [];
+---
+
+<section class="sp-user-libcard" data-view="user-library-card">
+	<p data-shadow-marker="user-libcard-should-be-shadowed">
+		Rendered by the user LibraryCard — should be shadowed by generated.
+	</p>
+	<ul>
+		{entries.map((entry) => <li>{entry.basename}</li>)}
+	</ul>
+</section>

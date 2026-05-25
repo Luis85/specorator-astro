@@ -1,0 +1,54 @@
+{
+	"version": 1,
+	"generatedAt": "2026-05-24T00:00:00.000Z",
+	"snapshots": [
+		{
+			"baseId": "books",
+			"view": "Reading list",
+			"route": "/books",
+			"file": "snapshots/books.json"
+		},
+		{
+			"baseId": "films",
+			"view": "Watchlist",
+			"route": "/films",
+			"file": "snapshots/films.json"
+		},
+		{
+			"baseId": "tasks",
+			"view": "Backlog",
+			"route": "/tasks",
+			"file": "snapshots/tasks.json"
+		},
+		{
+			"baseId": "showcase",
+			"view": "Showcase",
+			"route": "/showcase",
+			"file": "snapshots/showcase.json"
+		},
+		{
+			"baseId": "library",
+			"view": "Library",
+			"route": "/library",
+			"file": "snapshots/library.json"
+		},
+		{
+			"baseId": "collide",
+			"view": "Collide listing (should LOSE to the page)",
+			"route": "/collide",
+			"file": "snapshots/collide.json"
+		},
+		{
+			"baseId": "missing-comp",
+			"view": "Missing component",
+			"route": "/missing-comp",
+			"file": "snapshots/missing-comp.json"
+		},
+		{
+			"baseId": "transpiled",
+			"view": "Transpiled component smoke",
+			"route": "/transpiled",
+			"file": "snapshots/transpiled.json"
+		}
+	]
+}

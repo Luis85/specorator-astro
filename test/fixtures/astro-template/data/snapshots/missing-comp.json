@@ -1,0 +1,25 @@
+{
+	"baseId": "missing-comp",
+	"route": "/missing-comp",
+	"source": { "kind": "file", "path": "Missing/missing.base" },
+	"view": {
+		"type": "table",
+		"name": "Missing component",
+		"order": ["file.name"]
+	},
+	"render": { "component": "DoesNotExist", "layout": "BaseLayout" },
+	"groups": [
+		{
+			"key": null,
+			"entries": [
+				{
+					"path": "Missing/Row.md",
+					"basename": "Row",
+					"route": "/missing-comp/row",
+					"values": { "file.name": "Row" }
+				}
+			]
+		}
+	],
+	"generatedAt": "2026-05-24T00:00:00.000Z"
+}

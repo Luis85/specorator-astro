@@ -1,0 +1,33 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Site home route (`/`). Renders the designated **home page** (the standalone
+ * PageNode with `isHome: true`, FR-12; DESIGN §5.7) via the `page` view when one
+ * was synced; otherwise it falls back to the bundled placeholder, so a freshly
+ * scaffolded project (or a site with no home page) is still runnable. Rendering
+ * the home page here — rather than from `[...slug].astro` with an empty slug —
+ * keeps the static `/` from colliding with the dynamic catch-all.
+ */
+import { getCollection } from 'astro:content';
+import { resolveLayout, resolveView } from '../registry';
+
+const pages = await getCollection('pages');
+const home = pages.find((entry) => entry.data.isHome)?.data;
+
+const BaseLayout = resolveLayout('BaseLayout');
+const Page = resolveView('page');
+const Placeholder = resolveView('placeholder');
+---
+
+{
+	home !== undefined ? (
+		<BaseLayout title={home.title}>
+			<Page page={home} />
+		</BaseLayout>
+	) : (
+		<BaseLayout title="Specorator site">
+			<Placeholder />
+		</BaseLayout>
+	)
+}

@@ -1,0 +1,123 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Template-owned `list` view (docs/DESIGN.md §5.5, §7; Bases mapping: markers,
+ * nested properties). Renders a marked list, one item per entry, showing the
+ * entry basename as the primary line and the remaining `view.order` properties
+ * as a compact secondary line. Honors grouping: flat for a single null-key
+ * group, a heading per keyed group. Replaced on plugin upgrade — shadow with
+ * src/user/views.
+ */
+import type { ViewSnapshot } from '../../content/schema';
+import { formatCell, getDisplayName, imageUrl, isImageProperty } from './labels';
+
+interface Props {
+	snapshot: ViewSnapshot;
+}
+
+const { snapshot } = Astro.props;
+const imageProps = snapshot.view.imageProperties;
+// The first image-typed property renders as a leading thumbnail; the rest of
+// the (non-image) properties render in the compact secondary line.
+const thumbProp = snapshot.view.order.find((p) => isImageProperty(p, imageProps));
+const secondary = snapshot.view.order.filter(
+	(p) => p !== 'file.name' && !isImageProperty(p, imageProps),
+);
+const grouped = snapshot.groups.some((g) => g.key !== null);
+---
+
+<section class="sp-list-view" data-view="list">
+	{
+		snapshot.groups.map((group) => (
+			<div class="sp-group">
+				{grouped && group.key !== null && (
+					<h2 class="sp-group-heading">{group.key}</h2>
+				)}
+				<ul class="sp-list" role="list">
+					{group.entries.map((entry) => {
+						const thumbUrl =
+							thumbProp !== undefined ? imageUrl(entry.values[thumbProp] ?? null) : null;
+						return (
+							<li class="sp-list-item" data-entry={entry.path}>
+								{thumbUrl !== null ? (
+									<img
+										class="sp-list-thumb"
+										src={thumbUrl}
+										alt={entry.basename}
+										data-property={thumbProp}
+										loading="lazy"
+									/>
+								) : (
+									<span class="sp-list-marker" aria-hidden="true">
+										•
+									</span>
+								)}
+								<span class="sp-list-primary">{entry.basename}</span>
+								{secondary.length > 0 && (
+									<span class="sp-list-secondary">
+										{secondary.map((prop, i) => (
+											<span class="sp-list-prop" data-property={prop}>
+												{i > 0 ? ' · ' : ''}
+												<span class="sp-list-prop-label">{getDisplayName(prop)}:</span>{' '}
+												{formatCell(entry.values[prop] ?? null)}
+											</span>
+										))}
+									</span>
+								)}
+							</li>
+						);
+					})}
+				</ul>
+			</div>
+		))
+	}
+</section>
+
+<style>
+	.sp-list-view {
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-space-lg);
+	}
+	.sp-group-heading {
+		margin: 0 0 var(--sp-space-xs);
+		font-size: var(--sp-text-lg);
+		color: var(--sp-color-fg);
+	}
+	.sp-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.sp-list-item {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: var(--sp-space-xs);
+		padding: var(--sp-space-xs) 0;
+		border-bottom: 1px solid var(--sp-color-border);
+	}
+	.sp-list-marker {
+		color: var(--sp-color-accent);
+	}
+	.sp-list-thumb {
+		width: 2.5rem;
+		height: 2.5rem;
+		object-fit: cover;
+		border-radius: var(--sp-radius);
+		align-self: center;
+		background: var(--sp-color-surface);
+	}
+	.sp-list-primary {
+		color: var(--sp-color-fg);
+		font-weight: 600;
+	}
+	.sp-list-secondary {
+		color: var(--sp-color-muted);
+		font-size: var(--sp-text-sm);
+	}
+	.sp-list-prop-label {
+		font-weight: 600;
+	}
+</style>

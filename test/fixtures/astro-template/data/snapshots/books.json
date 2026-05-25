@@ -1,0 +1,49 @@
+{
+	"baseId": "books",
+	"route": "/books",
+	"source": { "kind": "file", "path": "Books/books.base" },
+	"view": {
+		"type": "table",
+		"name": "Reading list",
+		"order": ["file.name", "note.author", "formula.ppu"],
+		"groupBy": { "property": "note.status", "direction": "ASC" }
+	},
+	"render": { "component": "auto", "layout": "auto" },
+	"groups": [
+		{
+			"key": "Reading",
+			"entries": [
+				{
+					"path": "Books/Dune.md",
+					"basename": "Dune",
+					"route": "/books/dune",
+					"values": {
+						"file.name": "Dune",
+						"note.author": "Frank Herbert",
+						"formula.ppu": "12.50"
+					},
+					"body": {
+						"format": "markdown",
+						"content": "Set on Arrakis. See also [Neuromancer](/books/neuromancer). Mentions <span class=\"sp-unpublished\" data-unpublished-link=\"Private Note\" title=\"Not published: Private Note\">Private Note</span> which is not published.\n\n> [!note] Spice\n> The spice must flow.\n\nUnresolved block ref [[Dune#^missing]] and a Dataview block:\n\n```dataview\nTABLE file.name FROM \"Books\"\n```\n"
+					}
+				}
+			]
+		},
+		{
+			"key": "Finished",
+			"entries": [
+				{
+					"path": "Books/Neuromancer.md",
+					"basename": "Neuromancer",
+					"route": "/books/neuromancer",
+					"values": {
+						"file.name": "Neuromancer",
+						"note.author": "William Gibson",
+						"formula.ppu": "9.99"
+					}
+				}
+			]
+		}
+	],
+	"generatedAt": "2026-05-24T00:00:00.000Z"
+}

@@ -1,0 +1,25 @@
+{
+	"baseId": "collide",
+	"route": "/collide",
+	"source": { "kind": "file", "path": "Collide/collide.base" },
+	"view": {
+		"type": "list",
+		"name": "Collide listing (should LOSE to the page)",
+		"order": ["file.name"]
+	},
+	"render": { "component": "auto", "layout": "BaseLayout" },
+	"groups": [
+		{
+			"key": null,
+			"entries": [
+				{
+					"path": "Collide/Item.md",
+					"basename": "Item",
+					"route": "/collide/item",
+					"values": { "file.name": "Item" }
+				}
+			]
+		}
+	],
+	"generatedAt": "2026-05-24T00:00:00.000Z"
+}

@@ -1,0 +1,115 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Template-owned `table` view (docs/DESIGN.md §5.5, §7; Bases mapping: columns
+ * via `view.order`). Renders one column per property id in `view.order` with a
+ * humanized header label, and one row per entry. Honors grouping: a single
+ * null-key group renders flat; keyed groups render a heading per group with its
+ * own row block. Replaced on plugin upgrade — shadow with src/user/views.
+ */
+import type { ViewSnapshot } from '../../content/schema';
+import { formatCell, getDisplayName, imageUrl, isImageProperty } from './labels';
+
+interface Props {
+	snapshot: ViewSnapshot;
+}
+
+const { snapshot } = Astro.props;
+const columns = snapshot.view.order;
+const imageProps = snapshot.view.imageProperties;
+const grouped = snapshot.groups.some((g) => g.key !== null);
+---
+
+<section class="sp-table-view" data-view="table">
+	{
+		snapshot.groups.map((group) => (
+			<div class="sp-group">
+				{grouped && group.key !== null && (
+					<h2 class="sp-group-heading">{group.key}</h2>
+				)}
+				<table class="sp-table">
+					<thead>
+						<tr>
+							{columns.map((col) => (
+								<th scope="col" data-property={col}>
+									{getDisplayName(col)}
+								</th>
+							))}
+						</tr>
+					</thead>
+					<tbody>
+						{group.entries.map((entry) => (
+							<tr data-entry={entry.path}>
+								{columns.map((col) => {
+									const cellImage = isImageProperty(col, imageProps)
+										? imageUrl(entry.values[col] ?? null)
+										: null;
+									return (
+										<td data-property={col}>
+											{cellImage !== null ? (
+												<img
+													class="sp-table-image"
+													src={cellImage}
+													alt={getDisplayName(col)}
+													loading="lazy"
+												/>
+											) : (
+												formatCell(entry.values[col] ?? null)
+											)}
+										</td>
+									);
+								})}
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		))
+	}
+</section>
+
+<style>
+	.sp-table-view {
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-space-lg);
+	}
+	.sp-group-heading {
+		margin: 0 0 var(--sp-space-xs);
+		font-size: var(--sp-text-lg);
+		color: var(--sp-color-fg);
+	}
+	/* Horizontal scroll on narrow viewports keeps wide tables usable on phones. */
+	.sp-group {
+		overflow-x: auto;
+	}
+	.sp-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--sp-text-sm);
+	}
+	.sp-table th,
+	.sp-table td {
+		text-align: left;
+		padding: var(--sp-space-xs) var(--sp-space-sm);
+		border-bottom: 1px solid var(--sp-color-border);
+	}
+	.sp-table thead th {
+		color: var(--sp-color-muted);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		font-size: var(--sp-text-xs);
+		border-bottom: 2px solid var(--sp-color-border-strong);
+		white-space: nowrap;
+	}
+	.sp-table tbody tr:hover {
+		background: var(--sp-color-surface);
+	}
+	.sp-table-image {
+		max-height: 3rem;
+		width: auto;
+		border-radius: var(--sp-radius-sm);
+	}
+</style>

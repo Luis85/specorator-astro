@@ -1,0 +1,162 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Template-owned `cards` view (docs/DESIGN.md §5.5, §7). Renders one card per
+ * entry. The card title is the entry basename; the remaining `view.order`
+ * properties render as labelled fields. Honors grouping the same way as the
+ * other views: flat for a single null-key group, a heading per keyed group.
+ * Image-typed properties (e.g. a card cover, `note.cover`) are flagged in
+ * `view.imageProperties` by the asset pipeline (C7/FR-16); their values are
+ * already rewritten to public URLs. The first image property renders as the
+ * card cover; any further image fields render inline as `<img>`. Replaced on
+ * plugin upgrade — shadow with src/user/views.
+ */
+import type { ViewSnapshot } from '../../content/schema';
+import { formatCell, getDisplayName, imageUrl, isImageProperty } from './labels';
+
+interface Props {
+	snapshot: ViewSnapshot;
+}
+
+const { snapshot } = Astro.props;
+const fields = snapshot.view.order;
+const imageProps = snapshot.view.imageProperties;
+const grouped = snapshot.groups.some((g) => g.key !== null);
+// The first image-typed property in display order is the card cover; remaining
+// fields (image or text) render in the field list below the title.
+const coverProp = fields.find((field) => isImageProperty(field, imageProps));
+---
+
+<section class="sp-cards-view" data-view="cards">
+	{
+		snapshot.groups.map((group) => (
+			<div class="sp-group">
+				{grouped && group.key !== null && (
+					<h2 class="sp-group-heading">{group.key}</h2>
+				)}
+				<ul class="sp-cards" role="list">
+					{group.entries.map((entry) => {
+						const coverUrl =
+							coverProp !== undefined ? imageUrl(entry.values[coverProp] ?? null) : null;
+						return (
+							<li class="sp-card" data-entry={entry.path}>
+								{coverUrl !== null && (
+									<img
+										class="sp-card-cover"
+										src={coverUrl}
+										alt={entry.basename}
+										data-property={coverProp}
+										loading="lazy"
+									/>
+								)}
+								<h3 class="sp-card-title">{entry.basename}</h3>
+								<dl class="sp-card-fields">
+									{fields
+										.filter((field) => field !== 'file.name' && field !== coverProp)
+										.map((field) => {
+											const fieldImage = isImageProperty(field, imageProps)
+												? imageUrl(entry.values[field] ?? null)
+												: null;
+											return (
+												<div class="sp-card-field" data-property={field}>
+													<dt>{getDisplayName(field)}</dt>
+													<dd>
+														{fieldImage !== null ? (
+															<img
+																class="sp-card-image"
+																src={fieldImage}
+																alt={getDisplayName(field)}
+																loading="lazy"
+															/>
+														) : (
+															formatCell(entry.values[field] ?? null)
+														)}
+													</dd>
+												</div>
+											);
+										})}
+								</dl>
+							</li>
+						);
+					})}
+				</ul>
+			</div>
+		))
+	}
+</section>
+
+<style>
+	.sp-cards-view {
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-space-lg);
+	}
+	.sp-group-heading {
+		margin: 0 0 var(--sp-space-xs);
+		font-size: var(--sp-text-lg);
+		color: var(--sp-color-fg);
+	}
+	.sp-cards {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+		gap: var(--sp-space-md);
+	}
+	.sp-card {
+		display: flex;
+		flex-direction: column;
+		background: var(--sp-color-surface-raised);
+		border: 1px solid var(--sp-color-border);
+		border-radius: var(--sp-radius-lg);
+		padding: var(--sp-space-md);
+		box-shadow: var(--sp-shadow-sm);
+		transition:
+			box-shadow 0.15s ease,
+			border-color 0.15s ease;
+	}
+	.sp-card:hover {
+		box-shadow: var(--sp-shadow);
+		border-color: var(--sp-color-border-strong);
+	}
+	.sp-card-cover {
+		display: block;
+		width: 100%;
+		height: auto;
+		aspect-ratio: 16 / 9;
+		border-radius: var(--sp-radius);
+		margin-bottom: var(--sp-space-sm);
+		object-fit: cover;
+		background: var(--sp-color-surface);
+	}
+	.sp-card-image {
+		max-width: 100%;
+		height: auto;
+		border-radius: var(--sp-radius-sm);
+	}
+	.sp-card-title {
+		margin: 0 0 var(--sp-space-xs);
+		font-size: var(--sp-text-lg);
+		color: var(--sp-color-fg);
+	}
+	.sp-card-fields {
+		margin: 0;
+		font-size: var(--sp-text-sm);
+	}
+	.sp-card-field {
+		display: flex;
+		gap: var(--sp-space-xs);
+		margin-bottom: var(--sp-space-2xs);
+	}
+	.sp-card-field dt {
+		color: var(--sp-color-muted);
+		font-weight: 600;
+		margin: 0;
+	}
+	.sp-card-field dd {
+		margin: 0;
+		color: var(--sp-color-fg);
+	}
+</style>

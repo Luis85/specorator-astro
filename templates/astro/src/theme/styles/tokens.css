@@ -1,0 +1,124 @@
+/*
+ * specorator-template-version: 1
+ * Template-owned default design tokens (docs/DESIGN.md §5.6, D9; NFR-10).
+ *
+ * One polished default theme expressed entirely as CSS-variable design tokens:
+ * color / surface / text / border, a spacing & radius scale, typography
+ * (incl. fluid type), and shadows. Light is the `:root` default; dark values
+ * apply via `prefers-color-scheme` AND an explicit `[data-theme]` hook so a
+ * site can force a mode without JS gymnastics.
+ *
+ * Replaced on plugin upgrade. This file is imported FIRST by BaseLayout; the
+ * user-owned src/user/theme.css is imported LAST, so redefining any --sp-* token
+ * (or rule) there wins WITHOUT editing a single component (FR-11a / NFR-7 / D9).
+ */
+
+:root {
+	/* --- Color: brand + semantic accents (mode-independent hues) --- */
+	--sp-color-accent: #3b5bdb;
+	--sp-color-accent-contrast: #ffffff;
+	--sp-color-accent-soft: color-mix(in srgb, var(--sp-color-accent) 12%, transparent);
+
+	/* --- Surface: page background + raised panels (cards, callouts) --- */
+	--sp-color-bg: #ffffff;
+	--sp-color-surface: #f6f7f9;
+	--sp-color-surface-raised: #ffffff;
+
+	/* --- Text: primary, muted/secondary, and on-accent --- */
+	--sp-color-fg: #1a1d24;
+	--sp-color-muted: #5b6472;
+	--sp-color-on-accent: var(--sp-color-accent-contrast);
+
+	/* --- Border / divider lines --- */
+	--sp-color-border: #d9dee5;
+	--sp-color-border-strong: #b7c0cc;
+
+	/* --- Focus ring (keyboard accessibility, NFR-10) --- */
+	--sp-color-focus: var(--sp-color-accent);
+
+	/* --- Typography: fluid, responsive scale (phone -> desktop) --- */
+	--sp-font-body:
+		-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	--sp-font-mono:
+		ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+	--sp-line-height: 1.6;
+	--sp-line-height-tight: 1.25;
+	/* clamp(min, fluid, max): scales smoothly with the viewport between phone and desktop */
+	--sp-text-xs: clamp(0.75rem, 0.72rem + 0.15vw, 0.85rem);
+	--sp-text-sm: clamp(0.85rem, 0.82rem + 0.2vw, 0.95rem);
+	--sp-text-base: clamp(1rem, 0.96rem + 0.25vw, 1.125rem);
+	--sp-text-lg: clamp(1.15rem, 1.05rem + 0.5vw, 1.4rem);
+	--sp-text-xl: clamp(1.5rem, 1.25rem + 1.25vw, 2.2rem);
+	--sp-text-2xl: clamp(1.9rem, 1.5rem + 2vw, 3rem);
+
+	/* --- Spacing scale (modular, all derived from --sp-space) --- */
+	--sp-space: 1rem;
+	--sp-space-3xs: calc(var(--sp-space) * 0.125);
+	--sp-space-2xs: calc(var(--sp-space) * 0.25);
+	--sp-space-xs: calc(var(--sp-space) * 0.5);
+	--sp-space-sm: calc(var(--sp-space) * 0.75);
+	--sp-space-md: var(--sp-space);
+	--sp-space-lg: calc(var(--sp-space) * 1.5);
+	--sp-space-xl: calc(var(--sp-space) * 2.5);
+
+	/* --- Radius scale --- */
+	--sp-radius-sm: 0.25rem;
+	--sp-radius: 0.5rem;
+	--sp-radius-lg: 0.875rem;
+
+	/* --- Shadows (elevation) --- */
+	--sp-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 1px rgba(15, 23, 42, 0.04);
+	--sp-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.06);
+	--sp-shadow-lg: 0 8px 30px rgba(15, 23, 42, 0.12);
+
+	/* --- Layout --- */
+	--sp-maxwidth: 64rem;
+}
+
+/* Dark palette: applied automatically by OS preference and overridable by an
+ * explicit [data-theme] on <html> (force dark with data-theme="dark"). Only the
+ * mode-dependent tokens are redefined; the scale/typography tokens are shared. */
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		--sp-color-bg: #0e1117;
+		--sp-color-surface: #161b22;
+		--sp-color-surface-raised: #1c2230;
+		--sp-color-fg: #e7eaf0;
+		--sp-color-muted: #9aa4b2;
+		--sp-color-border: #2a313c;
+		--sp-color-border-strong: #3a4350;
+		--sp-color-accent: #748ffc;
+		--sp-color-accent-contrast: #0e1117;
+		--sp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+		--sp-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+		--sp-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+	}
+}
+
+/* Unpublished `[[wikilink]]` marker (FR-24, D17; DESIGN §5.7). An off-site link
+ * is resolved by the plugin to an inline <span class="sp-unpublished"> instead of
+ * an <a>, so it reads as visibly-distinct, NON-clickable "not published" text. A
+ * global rule (this sheet ships site-wide) so it applies inside any rendered body
+ * — detail pages and standalone pages alike. The off-site target is NEVER linked. */
+.sp-unpublished {
+	color: var(--sp-color-muted);
+	text-decoration: underline dotted var(--sp-color-border-strong);
+	text-underline-offset: 0.15em;
+	cursor: not-allowed;
+}
+
+/* Explicit dark mode (force regardless of OS), e.g. <html data-theme="dark">. */
+:root[data-theme='dark'] {
+	--sp-color-bg: #0e1117;
+	--sp-color-surface: #161b22;
+	--sp-color-surface-raised: #1c2230;
+	--sp-color-fg: #e7eaf0;
+	--sp-color-muted: #9aa4b2;
+	--sp-color-border: #2a313c;
+	--sp-color-border-strong: #3a4350;
+	--sp-color-accent: #748ffc;
+	--sp-color-accent-contrast: #0e1117;
+	--sp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+	--sp-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+	--sp-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+}

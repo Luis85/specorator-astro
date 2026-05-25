@@ -1,0 +1,29 @@
+---
+/*
+ * specorator-template-version: 1
+ * Template-owned placeholder view. The real table/cards/list view components
+ * arrive in chunk C5; this exists so the scaffolded project is runnable from
+ * first bootstrap (C1) and so the registry seam has something to resolve.
+ */
+interface Props {
+	heading?: string;
+}
+
+const { heading = 'No collections synced yet' } = Astro.props;
+---
+
+<section class="sp-placeholder">
+	<h1>{heading}</h1>
+	<p>
+		Run <strong>Sync site</strong> in Obsidian to publish your Bases collections here.
+	</p>
+</section>
+
+<style>
+	.sp-placeholder {
+		color: var(--sp-color-muted);
+	}
+	.sp-placeholder h1 {
+		color: var(--sp-color-fg);
+	}
+</style>

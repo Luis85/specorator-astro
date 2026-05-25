@@ -1,0 +1,72 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Breadcrumb trail (FR-13; DESIGN §5.7). Renders the ancestor chain for the
+ * current route (Home / Section / Page) inside a semantic
+ * `<nav aria-label="Breadcrumb">`. The last crumb is the current page and is
+ * marked `aria-current="page"` (and not linked); intermediate label crumbs (a
+ * route-less group) render as plain text. Consumes theme tokens only.
+ */
+import { breadcrumbsFor, type Crumb } from '../navigation';
+import type { NavigationTree } from '../../content/schema';
+
+interface Props {
+	tree: NavigationTree;
+	currentRoute: string;
+}
+
+const { tree, currentRoute } = Astro.props;
+const crumbs: Crumb[] = breadcrumbsFor(currentRoute, tree);
+const lastIndex = crumbs.length - 1;
+---
+
+{
+	crumbs.length > 1 && (
+		<nav class="sp-breadcrumbs" aria-label="Breadcrumb">
+			<ol class="sp-breadcrumb-list">
+				{crumbs.map((crumb, index) => (
+					<li class="sp-breadcrumb-item">
+						{index === lastIndex || crumb.route === undefined ? (
+							<span aria-current={index === lastIndex ? 'page' : undefined}>
+								{crumb.title}
+							</span>
+						) : (
+							<a href={crumb.route}>{crumb.title}</a>
+						)}
+					</li>
+				))}
+			</ol>
+		</nav>
+	)
+}
+
+<style>
+	.sp-breadcrumbs {
+		padding: var(--sp-space-sm) 0 0;
+	}
+	.sp-breadcrumb-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-space-2xs);
+		font-size: var(--sp-text-sm);
+		color: var(--sp-color-muted);
+	}
+	.sp-breadcrumb-item {
+		display: flex;
+		align-items: center;
+	}
+	/* A `/` separator before every crumb except the first. */
+	.sp-breadcrumb-item + .sp-breadcrumb-item::before {
+		content: '/';
+		margin-right: var(--sp-space-2xs);
+		color: var(--sp-color-border);
+	}
+	.sp-breadcrumb-item [aria-current='page'] {
+		color: var(--sp-color-fg);
+		font-weight: 600;
+	}
+</style>

@@ -53,12 +53,72 @@ export interface SyncPlan {
 	warnings: string[];
 }
 
+/**
+ * One referenced vault attachment that was copied into the site (FR-16; DESIGN
+ * §5.8). The asset pipeline records one of these per distinct source so the
+ * build can copy `source` (vault-relative) to `url` (under `public/`).
+ */
+export interface AssetRef {
+	/** Normalized vault-relative source path of the attachment. */
+	source: string;
+	/** Public URL the rewritten reference points at (e.g. `/assets/cover.png`). */
+	url: string;
+}
+
+/**
+ * The note body carried on an entry snapshot for its detail page (FR-21, D8;
+ * DESIGN §6). Optional: present only when the entry needs its body rendered. The
+ * `content` is Obsidian-flavored markdown with `[[wikilinks]]` **already
+ * resolved to routes** against the route table before write (DESIGN §5.7) and
+ * `![[embeds]]` resolved to asset URLs; callouts are rendered by the template's
+ * remark/rehype step. Block refs, transclusions, and Dataview are out of scope
+ * and degrade gracefully (D8).
+ */
+export interface EntryBody {
+	format: 'markdown';
+	content: string;
+}
+
+/**
+ * A standalone website page derived from a designated vault note (FR-12, FR-15;
+ * DESIGN §5.7, §6). One `PageNode` is emitted per designated note — a note that
+ * either lives in the configured `Site/pages` folder or carries an opt-in
+ * frontmatter flag (`site: true` / `type: page`). The note becomes a route in
+ * the shared `[...slug]` namespace; exactly one designated note may be the
+ * **home page** (`/`). The `body` is the note's markdown (frontmatter stripped)
+ * with `[[wikilinks]]` resolved to site routes against the route table before
+ * write; `frontmatter` carries the note's raw frontmatter (for the title and
+ * future SEO/nav hints). The writer commits these in a `pages` snapshot.
+ */
+export interface PageNode {
+	/** Vault-relative path of the backing note, e.g. `Site/pages/About.md`. */
+	path: string;
+	/** Normalized site route with a leading slash (the home page is `/`). */
+	route: string;
+	/** Human title for the page (frontmatter `title`, else the note basename). */
+	title: string;
+	/** Whether this page is the site home (`/`). At most one page is the home. */
+	isHome: boolean;
+	/** The note's raw frontmatter (title/SEO/nav hints); JSON-serializable subset. */
+	frontmatter: Record<string, CellValue>;
+	/** The page body (markdown, frontmatter stripped). Absent → an empty page. */
+	body?: EntryBody;
+}
+
 /** One harvested entry (a note matching the base's filters). */
 export interface EntrySnapshot {
 	path: string;
 	basename: string;
 	route: string;
+	/**
+	 * Property values. For image-typed properties (those listed in
+	 * {@link ViewSnapshot.view.imageProperties}) the asset pipeline rewrites the
+	 * raw reference to the resolved public URL (or a placeholder URL when the
+	 * attachment is missing), so the renderer can emit `<img src=…>` directly.
+	 */
 	values: Record<BasesPropertyId, CellValue>;
+	/** Optional rendered detail-page body (FR-21, D8). Absent → no body section. */
+	body?: EntryBody;
 }
 
 /** A group of entries (when the view uses `groupBy`); `key` is `null` if flat. */
@@ -70,14 +130,32 @@ export interface EntryGroup {
 /** The serialized output of harvesting one `(base, view)`. */
 export interface ViewSnapshot {
 	baseId: string;
+	/**
+	 * The listing route for this view (the resolved, collision-checked route from
+	 * planning, with a leading slash, e.g. `/books`). Authoritative for the
+	 * rendered listing page; per-entry detail routes are derived from it.
+	 */
+	route: string;
 	source: { kind: 'file' | 'codeblock'; path: string };
 	view: {
 		type: ViewType;
 		name: string;
 		order: BasesPropertyId[];
 		groupBy?: { property: BasesPropertyId; direction: 'ASC' | 'DESC' };
+		/**
+		 * Property ids whose values are images (e.g. a card cover, `note.cover`).
+		 * The renderer emits `<img src=…>` for these; their entry `values` already
+		 * hold the resolved public URL (FR-16). Optional — absent means none.
+		 */
+		imageProperties?: BasesPropertyId[];
 	};
 	render: { component: string; layout: string };
 	groups: EntryGroup[];
+	/**
+	 * Manifest of vault attachments referenced by this view's entries, resolved
+	 * to public URLs (FR-16; DESIGN §5.8). The copier copies each `source` into
+	 * the project's `public/` at `url`. Optional — absent/empty means no assets.
+	 */
+	assets?: AssetRef[];
 	generatedAt: string;
 }

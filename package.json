@@ -9,8 +9,12 @@
 		"node": ">=24"
 	},
 	"scripts": {
-		"dev": "node esbuild.config.mjs",
-		"build": "node esbuild.config.mjs production",
+		"embed:template": "node scripts/embed-template.mjs",
+		"embed:template:check": "node scripts/embed-template.mjs --check",
+		"version:sync": "node scripts/sync-versions.mjs",
+		"version:sync:check": "node scripts/sync-versions.mjs --check",
+		"dev": "npm run embed:template && node esbuild.config.mjs",
+		"build": "npm run embed:template && node esbuild.config.mjs production",
 		"typecheck": "tsc --noEmit",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
@@ -20,7 +24,8 @@
 		"test:coverage": "vitest run --coverage",
 		"depcruise": "depcruise src --config .dependency-cruiser.cjs",
 		"docs": "typedoc",
-		"verify": "npm run typecheck && npm run lint && npm run format:check && npm run depcruise && npm run test:coverage && npm run build",
+		"verify": "npm run embed:template:check && npm run version:sync:check && npm run typecheck && npm run lint && npm run format:check && npm run depcruise && npm run test:coverage && npm run build",
+		"verify:template": "node scripts/verify-template.mjs",
 		"prepare": "husky"
 	},
 	"lint-staged": {

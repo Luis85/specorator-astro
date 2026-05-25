@@ -11,8 +11,45 @@ permissions:
 jobs:
     release-please:
         runs-on: ubuntu-latest
+        outputs:
+            # `release-please-action` emits these when it cuts a release on this
+            # push (i.e. a release PR was just merged). They gate the upload job.
+            releases_created: ${{ steps.release.outputs.releases_created }}
+            tag_name: ${{ steps.release.outputs.tag_name }}
         steps:
-            - uses: googleapis/release-please-action@v5
+            - id: release
+              uses: googleapis/release-please-action@v5
               with:
                   config-file: release-please-config.json
                   manifest-file: .release-please-manifest.json
+
+    # When release-please cuts a tag + GitHub release, build the production
+    # bundle on that tag and attach the three Obsidian assets. release-please
+    # itself creates the release but attaches NO assets (R2 / DIST-BRAT-1).
+    upload-assets:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        env:
+            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            TAG: ${{ needs.release-please.outputs.tag_name }}
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  # Build from the exact tagged tree release-please created.
+                  ref: ${{ needs.release-please.outputs.tag_name }}
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: '24'
+                  cache: npm
+            - run: npm ci
+            # Both gates must pass on the tag before we ship the build (R2).
+            - run: npm run verify
+            - run: npm run verify:template
+            # `verify` already ran the production build (esbuild + embed); rebuild
+            # explicitly so the attached main.js is unambiguously the release one.
+            - run: npm run build
+            # Upload exactly the three Obsidian-installable assets (DIST-BRAT-1).
+            - run: gh release upload "$TAG" main.js manifest.json styles.css --clobber

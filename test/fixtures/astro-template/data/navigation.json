@@ -1,0 +1,22 @@
+{
+	"version": 1,
+	"generatedAt": "2026-05-24T00:00:00.000Z",
+	"navigation": {
+		"items": [
+			{ "title": "Home", "route": "/", "children": [] },
+			{
+				"title": "Books",
+				"route": "/books",
+				"children": [{ "title": "Dune", "route": "/books/dune", "children": [] }]
+			},
+			{
+				"title": "Library",
+				"children": [
+					{ "title": "Films", "route": "/films", "children": [] },
+					{ "title": "Tasks", "route": "/tasks", "children": [] }
+				]
+			},
+			{ "title": "About", "route": "/about", "children": [] }
+		]
+	}
+}

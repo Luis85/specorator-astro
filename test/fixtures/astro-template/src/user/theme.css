@@ -1,0 +1,19 @@
+/*
+ * verify:template fixture override (C9).
+ *
+ * Overlaid onto the staged template's src/user/theme.css to prove the token
+ * cascade (docs/DESIGN.md §5.6, D9): the template's default tokens
+ * (src/theme/styles/tokens.css) are imported FIRST by BaseLayout and this
+ * user-owned sheet is imported LAST, so redefining a --sp-* token here wins in
+ * the built CSS WITHOUT editing any component.
+ *
+ * scripts/verify-template.mjs asserts on the built CSS bundle that:
+ *   - the sentinel override value (#abcdef) is present, and
+ *   - the default tokens' `:root` value (#3b5bdb) appears BEFORE it (cascade
+ *     order: theme.css after tokens.css ⇒ later, equal-specificity rule wins).
+ * The unminifiable marker property below proves this sheet reached the bundle.
+ */
+:root {
+	--sp-color-accent: #abcdef;
+	--sp-fixture-override-marker: applied;
+}

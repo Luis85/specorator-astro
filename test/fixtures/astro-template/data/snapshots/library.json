@@ -1,0 +1,25 @@
+{
+	"baseId": "library",
+	"route": "/library",
+	"source": { "kind": "file", "path": "Library/library.base" },
+	"view": {
+		"type": "list",
+		"name": "Library",
+		"order": ["file.name"]
+	},
+	"render": { "component": "LibraryCard", "layout": "BaseLayout" },
+	"groups": [
+		{
+			"key": null,
+			"entries": [
+				{
+					"path": "Library/Widget.md",
+					"basename": "Widget",
+					"route": "/library/widget",
+					"values": { "file.name": "Widget" }
+				}
+			]
+		}
+	],
+	"generatedAt": "2026-05-24T00:00:00.000Z"
+}

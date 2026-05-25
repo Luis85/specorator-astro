@@ -1,0 +1,25 @@
+{
+	"baseId": "transpiled",
+	"route": "/transpiled",
+	"source": { "kind": "codeblock", "path": "Transpiled/transpiled.base" },
+	"view": {
+		"type": "list",
+		"name": "Transpiled component smoke",
+		"order": ["file.name"]
+	},
+	"render": { "component": "TranspiledCard", "layout": "BaseLayout" },
+	"groups": [
+		{
+			"key": null,
+			"entries": [
+				{
+					"path": "Transpiled/Sample.md",
+					"basename": "Sample",
+					"route": "/transpiled/sample",
+					"values": { "file.name": "Sample" }
+				}
+			]
+		}
+	],
+	"generatedAt": "2026-05-24T00:00:00.000Z"
+}

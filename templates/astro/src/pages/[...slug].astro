@@ -1,0 +1,140 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Dynamic route for the whole site namespace (docs/DESIGN.md §5.5, §5.7). One
+ * static page per committed snapshot **listing** route (e.g. `/books`), per
+ * published entry **detail** route (e.g. `/books/dune`), AND per non-home
+ * **standalone page** route (e.g. `/about`, FR-12), all in the single
+ * `[...slug]` namespace. `getStaticPaths()` enumerates the `snapshots` + `pages`
+ * collections: each snapshot yields its listing page plus a detail page per
+ * entry (the entry's authoritative, collision-checked `route` from the plugin's
+ * route table — C8/FR-15), and each non-home page yields its page route. The
+ * **home** page (`route: '/'`) is rendered by `index.astro`, not here, so the
+ * static `/` never collides with this catch-all. Listing pages dispatch to a
+ * view component via the stable registry barrel (`registry.ts`) using
+ * `render.component`, defaulting to the view `type` when the binding is `'auto'`
+ * (§5.6); detail pages render the `detail` component and pages the `page`
+ * component, all with bodies at core fidelity (FR-21, FR-12, D8). The registry
+ * barrel keeps the file set stable so new components dodge Astro's new-file HMR
+ * gap (D9).
+ */
+import { getCollection } from 'astro:content';
+import { resolveLayout, resolveView } from '../registry';
+import type { EntrySnapshot, PageNode, ViewSnapshot } from '../content/schema';
+
+export async function getStaticPaths() {
+	// Astro extracts `getStaticPaths` into an isolated module, so it cannot rely
+	// on frontmatter-scope helpers — keep the slug stripper inline. The
+	// `[...slug]` param is slash-relative, so drop the route's leading slash.
+	const toParam = (route: string): string => route.replace(/^\/+/, '');
+
+	type Path = {
+		params: { slug: string };
+		props: { snapshot?: ViewSnapshot; entry?: EntrySnapshot; page?: PageNode };
+	};
+
+	// Collect candidates per tier, then de-dup across them. The core route table
+	// (`src/core/domain/route-table.ts`) already prevents collisions with a fixed
+	// precedence — **pages → listings → details** (first-wins within a tier) — but
+	// the template enumerates two collections and has zero defense, so a writer-side
+	// bug that emitted a duplicate `slug` here would make Astro throw "duplicate
+	// route" and HARD-FAIL `astro build`. De-duplicate defensively, matching that
+	// core precedence exactly, so a stray collision degrades to one route winning
+	// (a graceful loss) instead of a fatal build.
+	const listings: Path[] = [];
+	const details: Path[] = [];
+
+	const entries = await getCollection('snapshots');
+	for (const collectionEntry of entries) {
+		const snapshot = collectionEntry.data;
+		// The listing page (the collection entry id is the listing route).
+		listings.push({ params: { slug: toParam(collectionEntry.id) }, props: { snapshot } });
+
+		// One detail page per published entry, addressed by the entry's route.
+		for (const group of snapshot.groups) {
+			for (const entry of group.entries) {
+				details.push({ params: { slug: toParam(entry.route) }, props: { snapshot, entry } });
+			}
+		}
+	}
+
+	// One static page per NON-home standalone page (FR-12). The home page renders
+	// at `/` via `index.astro`, so skip its empty slug to avoid a route collision.
+	const pageCandidates: Path[] = [];
+	const pages = await getCollection('pages');
+	for (const collectionEntry of pages) {
+		const page = collectionEntry.data;
+		if (page.isHome) continue;
+		pageCandidates.push({ params: { slug: toParam(page.route) }, props: { page } });
+	}
+
+	// De-dup by `slug` honoring the core precedence (pages > listings > details);
+	// the FIRST candidate to claim a slug wins (matching the route table's
+	// first-wins within a tier). Later collisions are dropped — defense-in-depth.
+	const paths: Path[] = [];
+	const seen = new Set<string>();
+	for (const candidate of [...pageCandidates, ...listings, ...details]) {
+		if (seen.has(candidate.params.slug)) continue;
+		seen.add(candidate.params.slug);
+		paths.push(candidate);
+	}
+
+	return paths;
+}
+
+interface Props {
+	snapshot?: ViewSnapshot;
+	/** Present for a detail route. */
+	entry?: EntrySnapshot;
+	/** Present for a standalone-page route (FR-12). */
+	page?: PageNode;
+}
+
+const { snapshot, entry, page } = Astro.props;
+const isPage = page !== undefined;
+const isDetail = !isPage && entry !== undefined;
+
+// Page: always the `page` component (FR-12). Listing: an explicit component
+// binding wins; `'auto'` falls back to the view type. Detail: the `detail`
+// component (FR-21).
+const componentName = isPage
+	? 'page'
+	: isDetail
+		? 'detail'
+		: snapshot!.render.component && snapshot!.render.component !== 'auto'
+			? snapshot!.render.component
+			: snapshot!.view.type;
+
+const View = resolveView(componentName);
+const layoutName =
+	!isPage && snapshot!.render.layout && snapshot!.render.layout !== 'auto'
+		? snapshot!.render.layout
+		: 'BaseLayout';
+const Layout = resolveLayout(layoutName);
+const title = isPage ? page.title : isDetail ? entry!.basename : snapshot!.view.name;
+---
+
+<Layout title={title}>
+	{
+		isPage ? (
+			<View page={page} />
+		) : isDetail ? (
+			<View entry={entry} snapshot={snapshot} />
+		) : (
+			<>
+				<header class="sp-listing-header">
+					<h1>{snapshot!.view.name}</h1>
+				</header>
+				<View snapshot={snapshot} />
+			</>
+		)
+	}
+</Layout>
+
+<style>
+	.sp-listing-header h1 {
+		color: var(--sp-color-fg);
+		margin-top: 0;
+	}
+</style>
