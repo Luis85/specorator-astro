@@ -87,6 +87,33 @@ comments, and discussion.
   **never fatal** (FR-16): the pure `decideAssetAvailability`/`missingAsset`
   decision rewrites the value to a placeholder URL (`/assets/_missing.svg`,
   shipped in the template) and records a build warning instead of failing.
+- **Route table** — the pure single source of truth for the site's shared
+  `[...slug]` namespace (`route-table.ts`, `buildRouteTable`; FR-15, DESIGN §5.7).
+  Given the resolved targets + their entries it places every **listing** route
+  (one per `(base, view)`) and **detail** route (one per published entry)
+  deterministically, **detects collisions** across the whole namespace
+  (entry/listing/listing) and resolves them **first-wins** — a later listing is
+  skipped (like `planSync`), a later detail route gets a numeric suffix so every
+  entry keeps a page (FR-21) — recording a warning each. It also exposes a
+  **route resolver** (vault path / note name → on-site route | `null`).
+- **Wikilink resolver** — the pure `[[wikilink]]` rewriter (`wikilinks.ts`,
+  `resolveWikilinks`; FR-15, D8). DESIGN §5.7 mandates wikilinks resolve in the
+  harvester **against the route table, not at render time**: on-site links
+  become markdown links to routes; off-site links degrade to plain text (C16
+  styles them later). Image embeds (`![[…]]`) are left to the asset pipeline;
+  block refs / transclusions / Dataview are **out of scope** and pass through
+  (never throw).
+- **Detail page** — the per-entry route (`/books/dune`) rendering the entry's
+  values + note **body** at core fidelity (FR-21, D8). The template's
+  `[...slug].astro` `getStaticPaths` emits one per entry alongside the listings;
+  the `Detail` view renders the body through `markdown.ts` (unified: GFM +
+  Obsidian **callout** transform → HTML), with wikilinks/embeds pre-resolved.
+- **Entry body & body resolution** — the optional `EntrySnapshot.body`
+  (`{ format:'markdown', content }`) the harvester reads via `cachedRead` +
+  frontmatter strip (`toBody`). After harvest, the pure `resolveSnapshotBodies`
+  builds the **global** route table from all snapshots and rewrites each body's
+  wikilinks to routes before commit (so cross-base links resolve and collisions
+  warn) — DESIGN §5.7, §6.
 - **Theme / token** — the default look, driven by CSS-variable design tokens.
 - **Astro template** — the bundled Astro project under `templates/astro/**`,
   the **editable source of truth**. Gated by `npm run verify:template` (Astro
