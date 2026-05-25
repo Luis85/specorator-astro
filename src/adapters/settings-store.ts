@@ -4,6 +4,7 @@ import type { SettingsPort } from '../core/ports';
 import {
 	defaultSettings,
 	migrate,
+	type ExportConfig,
 	type SyncConfig,
 	type ToolchainConfig,
 	type VersionedSettings,
@@ -66,5 +67,10 @@ export class SettingsStore implements SettingsPort {
 	/** Snapshot the current sync-trigger config (live-resync toggle, FR-20). */
 	readSyncConfig(): SyncConfig {
 		return { ...this.settings.sync };
+	}
+
+	/** Snapshot the current build/export config (Export/Reveal destination, FR-22). */
+	readExportConfig(): ExportConfig {
+		return { ...this.settings.export };
 	}
 }

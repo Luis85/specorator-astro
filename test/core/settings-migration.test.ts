@@ -16,12 +16,13 @@ describe('settings migration', () => {
 		expect(migrate([])).toEqual(defaultSettings());
 	});
 
-	it('defaults: version, empty includes, port 4321, no overrides, live-resync off', () => {
+	it('defaults: version, empty includes, port 4321, no overrides, live-resync off, no export path', () => {
 		expect(defaultSettings()).toEqual({
 			version: SETTINGS_SCHEMA_VERSION,
 			site: { includes: [] },
 			toolchain: { port: DEFAULT_DEV_PORT },
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
+			export: {},
 		});
 		// Live re-sync ships off (opt-in), per FR-20 / D2.
 		expect(DEFAULT_LIVE_RESYNC).toBe(false);
@@ -42,6 +43,7 @@ describe('settings migration', () => {
 			},
 			toolchain: { port: DEFAULT_DEV_PORT },
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
+			export: {},
 		});
 	});
 
@@ -85,6 +87,7 @@ describe('settings migration', () => {
 				astroBinPath: '/opt/astro/bin/astro',
 			},
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
+			export: {},
 		});
 	});
 
@@ -94,9 +97,33 @@ describe('settings migration', () => {
 			site: { includes: [] },
 			toolchain: { port: DEFAULT_DEV_PORT },
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
+			export: {},
 		});
 		expect(migrate({ toolchain: { port: -1 } }).toolchain.port).toBe(DEFAULT_DEV_PORT);
 		expect(migrate({ toolchain: { port: 4321.5 } }).toolchain.port).toBe(DEFAULT_DEV_PORT);
+	});
+
+	it('defaults export config for pre-existing data that lacks it (migration-safe)', () => {
+		const withoutExport = {
+			version: 1,
+			site: { includes: [] },
+			toolchain: { port: 4321 },
+			sync: { liveResync: false },
+		};
+		expect(migrate(withoutExport).export).toEqual({});
+	});
+
+	it('preserves and trims a persisted export path', () => {
+		expect(migrate({ export: { exportPath: '  /Users/me/site  ' } }).export).toEqual({
+			exportPath: '/Users/me/site',
+		});
+	});
+
+	it('drops a malformed or empty export path back to no destination', () => {
+		expect(migrate({ export: 'nope' }).export).toEqual({});
+		expect(migrate({ export: { exportPath: '' } }).export).toEqual({});
+		expect(migrate({ export: { exportPath: '   ' } }).export).toEqual({});
+		expect(migrate({ export: { exportPath: 42 } }).export).toEqual({});
 	});
 
 	it('drops malformed includes and keeps optional fields only when non-empty', () => {

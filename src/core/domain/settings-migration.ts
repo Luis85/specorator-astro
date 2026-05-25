@@ -55,6 +55,18 @@ export interface SyncConfig {
 	liveResync: boolean;
 }
 
+/**
+ * Build/export settings (FR-8, FR-22 / D6). `astro build` always writes to
+ * `dist/` *inside* the data-folder project (NFR-3); this only configures the
+ * **Export/Reveal build** action, which copies that `dist/` into a user-chosen
+ * location for manual deploy. Optional: empty means "no export destination set"
+ * (Export errors with a clear message until the user picks one).
+ */
+export interface ExportConfig {
+	/** Absolute destination directory the built `dist/` is copied into. */
+	exportPath?: string;
+}
+
 /** The whole persisted settings document, carrying its schema version. */
 export interface VersionedSettings {
 	/** Schema version of this persisted document (forward-migration anchor). */
@@ -65,6 +77,8 @@ export interface VersionedSettings {
 	toolchain: ToolchainConfig;
 	/** Sync-trigger configuration (live re-sync toggle). */
 	sync: SyncConfig;
+	/** Build/export configuration (the Export/Reveal destination). */
+	export: ExportConfig;
 }
 
 /** Fresh defaults for a vault that has never persisted settings. */
@@ -74,6 +88,7 @@ export function defaultSettings(): VersionedSettings {
 		site: { includes: [] },
 		toolchain: { port: DEFAULT_DEV_PORT },
 		sync: { liveResync: DEFAULT_LIVE_RESYNC },
+		export: {},
 	};
 }
 
@@ -137,6 +152,14 @@ function parseSync(raw: unknown): SyncConfig {
 	return { liveResync: raw.liveResync };
 }
 
+/** Tolerantly parse export config, keeping the path only when a non-empty string. */
+function parseExport(raw: unknown): ExportConfig {
+	if (!isRecord(raw) || typeof raw.exportPath !== 'string' || raw.exportPath.trim() === '') {
+		return {};
+	}
+	return { exportPath: raw.exportPath.trim() };
+}
+
 /**
  * Upgrade any persisted settings blob to the current versioned schema.
  *
@@ -146,9 +169,10 @@ function parseSync(raw: unknown): SyncConfig {
  *   defaulted `toolchain`/`sync`.
  * - **a current versioned document** → re-parsed defensively (idempotent).
  *
- * New optional fields (e.g. `sync.liveResync`, added after v1) are *defaulted*
- * for old persisted data by the tolerant per-field parsers below — so no schema
- * bump is needed since no existing data is transformed, only filled in.
+ * New optional fields (e.g. `sync.liveResync` and `export.exportPath`, added
+ * after v1) are *defaulted* for old persisted data by the tolerant per-field
+ * parsers below — so no schema bump is needed since no existing data is
+ * transformed, only filled in.
  *
  * Always returns a fully-populated, valid {@link VersionedSettings}; never throws.
  */
@@ -165,5 +189,6 @@ export function migrate(persisted: unknown): VersionedSettings {
 		site: parseSiteConfig(persisted.site),
 		toolchain: parseToolchain(persisted.toolchain),
 		sync: parseSync(persisted.sync),
+		export: parseExport(persisted.export),
 	};
 }

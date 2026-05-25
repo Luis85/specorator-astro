@@ -4,10 +4,11 @@ import { DEFAULT_DEV_PORT } from '../core/domain/settings-migration';
 
 /**
  * Native settings tab for editing the site configuration: the absolute site URL,
- * the curated list of published `(base, view)` targets, and the toolchain
- * (dev-server port + Node/Astro binary overrides, FR-8). Replaces the former
- * hand-edited config note (D4). Mutations look up each target by identity so
- * concurrent edits and removals never write to the wrong row.
+ * the curated list of published `(base, view)` targets, the toolchain
+ * (dev-server port + Node/Astro binary overrides), and the build export location
+ * (FR-8, FR-22). Replaces the former hand-edited config note (D4). Mutations look
+ * up each target by identity so concurrent edits and removals never write to the
+ * wrong row.
  */
 export class SiteSettingTab extends PluginSettingTab {
 	constructor(
@@ -109,6 +110,37 @@ export class SiteSettingTab extends PluginSettingTab {
 
 		this.displaySyncTriggers(containerEl);
 		this.displayToolchain(containerEl);
+		this.displayBuild(containerEl);
+	}
+
+	/**
+	 * Build section (FR-8, FR-22 / D6). `astro build` always writes to `dist/`
+	 * inside the data-folder project; this only sets the **Export/Reveal build**
+	 * destination — the absolute directory that `dist/` is copied into for manual
+	 * deploy. Leave blank to skip export (the action errors with a clear message
+	 * until a destination is set). NFR-9: the export copies into the destination,
+	 * never deleting anything already there.
+	 */
+	private displayBuild(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Build').setHeading();
+
+		new Setting(containerEl)
+			.setName('Export location (optional)')
+			.setDesc(
+				'Absolute path of a folder the built site (dist/) is copied into when you export the build, ready to deploy to any static host. Leave blank to keep the build only in the plugin data folder.',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder('/path/to/my-published-site')
+					.setValue(this.store.current().export.exportPath ?? '')
+					.onChange((value) => {
+						const trimmed = value.trim();
+						this.store.edit((settings) => {
+							if (trimmed === '') delete settings.export.exportPath;
+							else settings.export.exportPath = trimmed;
+						});
+					}),
+			);
 	}
 
 	/**

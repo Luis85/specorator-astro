@@ -43,6 +43,7 @@ describe('SettingsStore', () => {
 			},
 			toolchain: { port: DEFAULT_DEV_PORT },
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
+			export: {},
 		});
 	});
 
@@ -113,6 +114,23 @@ describe('SettingsStore', () => {
 		const store = new SettingsStore(plugin);
 		await store.load();
 		expect(store.readSyncConfig()).toEqual({ liveResync: true });
+	});
+
+	it('exposes the export config, defaulting to no destination', async () => {
+		const { plugin } = makePlugin(null);
+		const store = new SettingsStore(plugin);
+		await store.load();
+		expect(store.readExportConfig()).toEqual({});
+	});
+
+	it('reads a persisted export path', async () => {
+		const { plugin } = makePlugin({
+			site: { includes: [] },
+			export: { exportPath: '/Users/me/site' },
+		});
+		const store = new SettingsStore(plugin);
+		await store.load();
+		expect(store.readExportConfig()).toEqual({ exportPath: '/Users/me/site' });
 	});
 
 	it('persists edits to the in-memory config', async () => {
