@@ -190,6 +190,19 @@ function parseKind(raw: string | null): ComponentKind {
 }
 
 /**
+ * A component `name` is used **verbatim** as the generated `.astro` basename and
+ * flows into the filesystem path the adapter writes (`src/generated/<dir>/<name>.astro`).
+ * It MUST therefore be a single, safe path segment: no `/`, no `\`, no `..`, no
+ * separators of any kind. We accept only `[A-Za-z0-9_-]` so a hostile note (e.g.
+ * `name: ../../../../src/user/Layout`) can never escape the generated tier and
+ * clobber hand-written `src/user/` files or project config (NFR-9, the
+ * generated-tier-only invariant + the consent disclosure). Slugging is *not* an
+ * option here: two distinct names could slug to the same file and silently
+ * shadow each other, so we skip instead.
+ */
+const SAFE_COMPONENT_NAME = /^[A-Za-z0-9_-]+$/;
+
+/**
  * Parse the `component:` frontmatter into {@link ComponentMeta}, or `null` if the
  * note has no usable `component:` mapping or no `name`. Total + tolerant.
  */
@@ -295,6 +308,16 @@ export function transpileComponentNote(raw: string): TranspileResult {
 	const meta = parseComponentMeta(frontmatter);
 	if (meta === null) {
 		return skip('no usable component: frontmatter (missing component block or name)');
+	}
+	// Path-traversal guard (NFR-9): the name becomes the generated `.astro`
+	// basename on disk, so reject anything that is not a single safe segment
+	// before it can reach the filesystem path the adapter writes. Skip (never
+	// throw, never slug) so a hostile or malformed note can neither escape the
+	// generated tier nor silently collide with another component.
+	if (!SAFE_COMPONENT_NAME.test(meta.name)) {
+		return skip(
+			`component name "${meta.name}" must be a single path segment ([A-Za-z0-9_-]); skipping`,
+		);
 	}
 	const fence = extractAstroFence(body);
 	if (fence === null) {

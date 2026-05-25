@@ -204,6 +204,50 @@ describe('component-transpile: skipped (not a component) — never throws', () =
 	});
 });
 
+describe('component-transpile: path-traversal guard on component name (NFR-9)', () => {
+	const noteWithName = (name: string): string =>
+		['---', 'component:', `    name: ${name}`, '---', '```astro', '<i/>', '```'].join('\n');
+
+	it('rejects a `../`-style traversal name with a reason and emits no path', () => {
+		const r = transpileComponentNote(noteWithName("'../../../../src/user/Layout'"));
+		expect(r.outcome).toBe('skipped');
+		if (r.outcome === 'skipped') {
+			expect(r.reason).toContain('single path segment');
+		}
+		// The result is a SkippedNote — it carries no generated `path` at all.
+		expect('path' in r).toBe(false);
+	});
+
+	it('rejects a name containing a `/` separator', () => {
+		const r = transpileComponentNote(noteWithName("'sub/Card'"));
+		expect(r.outcome).toBe('skipped');
+		if (r.outcome === 'skipped') expect(r.reason).toContain('single path segment');
+		expect('path' in r).toBe(false);
+	});
+
+	it('rejects a name containing `..`', () => {
+		const r = transpileComponentNote(noteWithName("'..'"));
+		expect(r.outcome).toBe('skipped');
+		if (r.outcome === 'skipped') expect(r.reason).toContain('single path segment');
+		expect('path' in r).toBe(false);
+	});
+
+	it('rejects a backslash separator (Windows-style traversal)', () => {
+		const r = transpileComponentNote(noteWithName("'..\\\\config'"));
+		expect(r.outcome).toBe('skipped');
+		if (r.outcome === 'skipped') expect(r.reason).toContain('single path segment');
+		expect('path' in r).toBe(false);
+	});
+
+	it('still transpiles a normal single-segment name (with hyphen/underscore)', () => {
+		const r = transpileComponentNote(noteWithName('Book_Card-2'));
+		expect(r.outcome).toBe('transpiled');
+		if (r.outcome === 'transpiled') {
+			expect(r.path).toBe('src/generated/views/Book_Card-2.astro');
+		}
+	});
+});
+
 describe('component-transpile: metadata parsing details', () => {
 	it('parses inline lists and strips inline comments + quotes', () => {
 		const fm = [
