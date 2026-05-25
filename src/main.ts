@@ -25,6 +25,7 @@ import {
 import { isComponentLibraryNote } from './core/domain/component-transpile';
 import { addNavItem } from './core/domain/navigation';
 import { derivePageRoute, isDesignatedPage, isHomeDesignation } from './core/domain/pages';
+import { slugifySegment } from './core/domain/routing';
 import { AssetSourceAdapter } from './adapters/asset-source-adapter';
 import { AstroProcessAdapter } from './adapters/astro-process-adapter';
 import { BasesHarvesterAdapter } from './adapters/bases-harvester-adapter';
@@ -301,10 +302,9 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		} else {
 			// Not (yet) a designated page: seed a slug from the basename so the user
 			// has a starting point; sync validation will flag it if it never exists.
-			route = `/${file.basename
-				.toLowerCase()
-				.replace(/[^a-z0-9]+/g, '-')
-				.replace(/^-+|-+$/g, '')}`;
+			// Use the canonical single-segment slug rule (routing.ts) so this never
+			// drifts from how real routes are derived.
+			route = `/${slugifySegment(file.basename)}`;
 		}
 
 		const title = typeof frontmatter.title === 'string' ? frontmatter.title : file.basename;
