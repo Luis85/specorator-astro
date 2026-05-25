@@ -50,6 +50,17 @@ While in beta, install with the
    `Luis85/specorator-astro`.
 3. Enable **Specorator Astro Viewer** in Settings → Community plugins.
 
+### Manual install (from a release)
+
+Prefer not to use BRAT? Install by hand:
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from a
+   [release](https://github.com/Luis85/specorator-astro/releases).
+2. Copy all three into `<vault>/.obsidian/plugins/specorator-astro-viewer/`
+   (create the folder if it doesn't exist).
+3. Reload Obsidian, then enable **Specorator Astro Viewer** in Settings →
+   Community plugins.
+
 A later release will be submitted to the official Community Plugins directory.
 
 ## Using it
@@ -84,6 +95,10 @@ must be explicitly enabled (see the note below).
       a folder **outside your vault** (the plugin's data folder); it also opens
       your local preview URL in the Web Viewer. It does not send your content
       anywhere and includes no telemetry.
+    - **First-run setup downloads dependencies from the npm registry:** the one-time
+      project bootstrap runs `npm install`, which fetches Astro and its dependencies
+      over the network. This is the only network access the plugin makes; your notes
+      are never uploaded.
     - The optional custom-component feature **executes the code you put in
       component notes at build time**, just like any build tool. Only enable it
       for component notes you trust (e.g. ones you wrote) — not notes received from
