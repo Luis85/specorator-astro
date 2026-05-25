@@ -114,7 +114,20 @@ comments, and discussion.
   builds the **global** route table from all snapshots and rewrites each body's
   wikilinks to routes before commit (so cross-base links resolve and collisions
   warn) — DESIGN §5.7, §6.
-- **Theme / token** — the default look, driven by CSS-variable design tokens.
+- **Theme / token** — the one polished default look, expressed entirely as
+  CSS-variable **design tokens** in `theme/styles/tokens.css` (color/surface/
+  text/border, a spacing & radius scale, fluid `clamp()` typography, shadows).
+  Light is the `:root` default; dark applies via `prefers-color-scheme` AND an
+  explicit `[data-theme]` hook, and the scale is responsive phone→desktop. Every
+  view/layout consumes **only** tokens (no hard-coded colors) so the whole site
+  re-skins from one sheet (D9; NFR-10).
+- **Token cascade / override** — the rule that makes a user re-skin work with no
+  component edits: `BaseLayout` imports `theme/styles/tokens.css` **first** and
+  the user-owned `user/theme.css` **last**, so a `--sp-*` token redefined there
+  wins by equal-specificity cascade order. `verify:template` proves this
+  structurally — the fixture overlays a sentinel override and the built CSS
+  bundle is asserted to contain it ordered after the default token block
+  (FR-11a / NFR-7 / D9).
 - **Astro template** — the bundled Astro project under `templates/astro/**`,
   the **editable source of truth**. Gated by `npm run verify:template` (Astro
   `check` + a fixture build). Not shipped as loose files: a build step embeds it
