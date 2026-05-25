@@ -55,6 +55,27 @@ export interface WebViewerPort {
 }
 
 /**
+ * Copies the built site out of the data folder and reveals it in the OS file
+ * manager (FR-22 / D6). `astro build` always writes to `dist/` *inside* the
+ * data-folder project (NFR-3); this port is the thin I/O seam for the manual
+ * **Export/Reveal build** action:
+ *
+ * - `exportBuild` copies `<projectDir>/dist` into `destDir` (creating it if
+ *   needed) and returns the absolute path that now holds the copy. It **copies
+ *   into** the destination and never deletes pre-existing content there (NFR-9
+ *   — no data loss); a missing `dist/` (never built) is surfaced as an error
+ *   the root shows as a Notice. Plain `node:fs` copy — never a `child_process`.
+ * - `reveal` opens a path in the OS file manager so the user can grab the
+ *   exported files for manual deploy.
+ */
+export interface BuildExportPort {
+	/** Copy `<projectDir>/dist` into `destDir`; returns the absolute copy path. */
+	exportBuild(destDir: string): Promise<{ exportedTo: string }>;
+	/** Open a path in the OS file manager (best-effort). */
+	reveal(absolutePath: string): Promise<void>;
+}
+
+/**
  * Reads whether the core plugins this plugin depends on are enabled (FR-10).
  *
  * The raw plugin-state read lives in the adapter (Obsidian's `internalPlugins`
