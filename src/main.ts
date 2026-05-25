@@ -59,7 +59,15 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 	private astro: AstroProcessPort | null = null;
 
 	override async onload(): Promise<void> {
-		const projectDir = `${this.manifest.dir ?? ''}/astro`;
+		// `manifest.dir` is the plugin's vault-relative install dir; it is always
+		// present for an installed plugin. Assert it so a malformed manifest fails
+		// loudly here rather than silently rooting the project at `/astro` (FIX 5).
+		const manifestDir = this.manifest.dir;
+		if (manifestDir === undefined || manifestDir === '') {
+			throw new Error('Specorator: plugin manifest has no install directory.');
+		}
+		// Normalize so the derived project/data paths use canonical separators (OBS-3).
+		const projectDir = normalizePath(`${manifestDir}/astro`);
 		const settings = new SettingsStore(this);
 		await settings.load();
 
@@ -451,13 +459,23 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 		);
 
 		// A lightweight tick checks the debounce window; the model fires at most
-		// once per quiet burst.
+		// once per quiet burst. A `resyncing` latch skips a flush while a prior
+		// `sync.run()` is still in flight, so a sync slower than the tick can never
+		// start a second concurrent commit racing on the writer's atomic swap (FIX 4a).
+		let resyncing = false;
 		this.registerInterval(
 			window.setInterval(() => {
+				if (resyncing) return;
 				if (trigger.flush(Date.now())) {
-					void sync.run().catch((error: unknown) => {
-						this.notifyFailure('live re-sync', error);
-					});
+					resyncing = true;
+					void sync
+						.run()
+						.catch((error: unknown) => {
+							this.notifyFailure('live re-sync', error);
+						})
+						.finally(() => {
+							resyncing = false;
+						});
 				}
 			}, RESYNC_TICK_MS),
 		);
