@@ -31,6 +31,7 @@ import { ComponentNoteModal, type ComponentNoteRequest } from './adapters/compon
 import { ConsentModal } from './adapters/consent-modal';
 import { CorePluginsAdapter } from './adapters/core-plugins-adapter';
 import { FsSnapshotWriter } from './adapters/fs-snapshot-writer';
+import { PageLoaderAdapter } from './adapters/page-loader-adapter';
 import { ProjectBootstrapAdapter } from './adapters/project-bootstrap-adapter';
 import { RegistryAdapter } from './adapters/registry-adapter';
 import { ScaffoldAdapter } from './adapters/scaffold-adapter';
@@ -98,7 +99,16 @@ export default class SpecoratorAstroViewerPlugin extends Plugin {
 				? new AssetSourceAdapter(this.app, projectDir, vaultBasePath)
 				: undefined;
 
-		const sync = new SyncSite(settings, bases, writer, corePlugins, assets);
+		// Standalone pages (FR-12; DESIGN §5.7): the page loader supplies candidate
+		// designated notes (pages folder + frontmatter-flagged), which the pure
+		// `buildPageNodes` folds into PageNodes the sync commits alongside views.
+		const pageLoader = new PageLoaderAdapter(
+			this.app,
+			() => settings.readPagesConfig().folder,
+			() => settings.readLibraryConfig().folder,
+		);
+
+		const sync = new SyncSite(settings, bases, writer, corePlugins, assets, pageLoader);
 		const preview = new PreviewSite(bootstrap, corePlugins, sync, astro, webViewer);
 
 		// Vault component library (FR-11f/g, FR-18 / D11): transpile code-fence

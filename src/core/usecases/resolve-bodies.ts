@@ -18,9 +18,14 @@
  * and returns the route-table warnings for the caller to surface.
  */
 
-import { buildRouteTable, type RouteTableTarget } from '../domain/route-table';
+import {
+	buildRouteTable,
+	type RouteResolver,
+	type RouteTablePage,
+	type RouteTableTarget,
+} from '../domain/route-table';
 import { resolveWikilinks } from '../domain/wikilinks';
-import type { EntryGroup, EntrySnapshot, ViewSnapshot } from '../domain/types';
+import type { EntryGroup, EntrySnapshot, PageNode, ViewSnapshot } from '../domain/types';
 
 /** The result of the body-resolution pass. */
 export interface ResolveBodiesResult {
@@ -30,27 +35,66 @@ export interface ResolveBodiesResult {
 	warnings: string[];
 }
 
+/** The result of resolving snapshot AND standalone-page bodies (FR-12; C13). */
+export interface ResolveSiteBodiesResult extends ResolveBodiesResult {
+	/** Standalone pages with their body `[[wikilinks]]` resolved to routes. */
+	pages: PageNode[];
+}
+
 /**
  * Resolve every entry body's wikilinks across the whole harvested set against a
  * single global route table. Snapshots without bodies pass through untouched
  * (the table is still built so collisions surface even when no body links exist).
  */
 export function resolveSnapshotBodies(snapshots: readonly ViewSnapshot[]): ResolveBodiesResult {
+	const { snapshots: out, warnings } = resolveSiteBodies(snapshots, []);
+	return { snapshots: out, warnings };
+}
+
+/**
+ * Resolve `[[wikilinks]]` in BOTH entry bodies and standalone-page bodies against
+ * ONE global route table built from the snapshots AND the pages (FR-12, FR-15;
+ * DESIGN §5.7). Building the table over the whole namespace is what lets a page
+ * body link to a collection entry (and vice versa), and surfaces page-vs-page /
+ * page-vs-listing collisions in one place. Bodies without links and pages
+ * without a body pass through untouched; the table is still built so collisions
+ * surface regardless.
+ */
+export function resolveSiteBodies(
+	snapshots: readonly ViewSnapshot[],
+	pages: readonly PageNode[],
+): ResolveSiteBodiesResult {
 	const targets: RouteTableTarget[] = snapshots.map((snapshot) => ({
 		route: snapshot.route,
 		entries: snapshot.groups.flatMap((group) =>
 			group.entries.map((entry) => ({ path: entry.path, basename: entry.basename })),
 		),
 	}));
+	const routePages: RouteTablePage[] = pages.map((page) => ({
+		path: page.path,
+		route: page.route,
+	}));
 
-	const table = buildRouteTable(targets);
+	const table = buildRouteTable(targets, routePages);
 
-	const out = snapshots.map((snapshot) => ({
+	const outSnapshots = snapshots.map((snapshot) => ({
 		...snapshot,
 		groups: snapshot.groups.map((group) => resolveGroupBodies(group, table.resolve)),
 	}));
+	const outPages = pages.map((page) => resolvePageBody(page, table.resolve));
 
-	return { snapshots: out, warnings: table.warnings };
+	return { snapshots: outSnapshots, pages: outPages, warnings: table.warnings };
+}
+
+/** Rewrite one standalone page's body wikilinks; a page without a body is unchanged. */
+function resolvePageBody(page: PageNode, resolve: RouteResolver): PageNode {
+	if (page.body === undefined) {
+		return page;
+	}
+	return {
+		...page,
+		body: { ...page.body, content: resolveWikilinks(page.body.content, resolve) },
+	};
 }
 
 /** Resolve the bodies of every entry in one group. */

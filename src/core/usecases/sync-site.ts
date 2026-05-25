@@ -1,19 +1,23 @@
 import { checkCorePlugins } from '../domain/core-plugins';
 import { UserFacingError } from '../domain/errors';
+import { buildPageNodes } from '../domain/pages';
 import { planSync } from '../domain/routing';
 import { resolveSnapshotAssets } from './resolve-assets';
-import { resolveSnapshotBodies } from './resolve-bodies';
+import { resolveSiteBodies } from './resolve-bodies';
 import type {
 	AssetSourcePort,
 	BasesPort,
 	CorePluginsPort,
+	PageLoaderPort,
 	SettingsPort,
 	SnapshotWriterPort,
 } from '../ports';
-import type { ViewSnapshot } from '../domain/types';
+import type { PageNode, ViewSnapshot } from '../domain/types';
 
 export interface SyncResult {
 	written: number;
+	/** How many standalone pages were committed (FR-12). */
+	pages: number;
 	warnings: string[];
 }
 
@@ -29,7 +33,9 @@ export interface SyncResult {
  * precondition (disabled Bases) throws a `UserFacingError` shown as a Notice.
  *
  * The asset port is optional: when absent (e.g. in a minimal test wiring) the
- * asset step is skipped and the harvested snapshots are committed as-is.
+ * asset step is skipped and the harvested snapshots are committed as-is. The
+ * page-loader port is likewise optional: when absent no standalone pages are
+ * loaded and an empty page set is committed (FR-12).
  */
 export class SyncSite {
 	constructor(
@@ -38,6 +44,7 @@ export class SyncSite {
 		private readonly writer: SnapshotWriterPort,
 		private readonly corePlugins: CorePluginsPort,
 		private readonly assets?: AssetSourcePort,
+		private readonly pageLoader?: PageLoaderPort,
 	) {}
 
 	async run(): Promise<SyncResult> {
@@ -76,16 +83,35 @@ export class SyncSite {
 			warnings.push(...copy.warnings);
 		}
 
-		// Body link resolution (FR-15, FR-21, D8): build the global route table
-		// from every snapshot and rewrite each entry body's `[[wikilinks]]` to
-		// routes before write (DESIGN §5.7). Cross-base links resolve here, and
-		// route collisions surface as warnings — both pure (`resolveSnapshotBodies`).
-		const bodies = resolveSnapshotBodies(snapshots);
+		// Standalone pages (FR-12; DESIGN §5.7): load candidate page notes and fold
+		// them into PageNodes (designation + route + first-wins home, all pure). The
+		// page set joins the GLOBAL route table below so page/collection routes
+		// collide-check in one place and page-body wikilinks resolve across both.
+		let pages: PageNode[] = [];
+		if (this.pageLoader !== undefined) {
+			const { pagesFolder, libraryFolder } = this.settings.readPageFolders?.() ?? {
+				pagesFolder: '',
+				libraryFolder: '',
+			};
+			const rawPages = await this.pageLoader.loadPages();
+			const built = buildPageNodes(rawPages, pagesFolder, libraryFolder);
+			pages = built.pages;
+			warnings.push(...built.warnings);
+		}
+
+		// Body link resolution (FR-15, FR-21, FR-12, D8): build ONE global route
+		// table from every snapshot AND every page, then rewrite each entry body's
+		// and each page body's `[[wikilinks]]` to routes before write (DESIGN §5.7).
+		// Cross-base + page↔collection links resolve here; route collisions surface
+		// as warnings — all pure (`resolveSiteBodies`).
+		const bodies = resolveSiteBodies(snapshots, pages);
 		snapshots = bodies.snapshots;
+		pages = bodies.pages;
 		warnings.push(...bodies.warnings);
 
-		await this.writer.commit(snapshots);
+		// Commit snapshots AND pages in one atomic swap (FR-3, FR-12).
+		await this.writer.commit(snapshots, pages);
 
-		return { written: snapshots.length, warnings };
+		return { written: snapshots.length, pages: pages.length, warnings };
 	}
 }

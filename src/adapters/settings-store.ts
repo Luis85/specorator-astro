@@ -96,6 +96,17 @@ export class SettingsStore implements SettingsPort, ComponentLibraryPort {
 	}
 
 	/**
+	 * The pages folder + component-library folder the pure `buildPageNodes` needs
+	 * to decide designation and the FR-11i component exclusion (`SettingsPort`).
+	 */
+	readPageFolders(): { pagesFolder: string; libraryFolder: string } {
+		return {
+			pagesFolder: this.settings.pages.folder,
+			libraryFolder: this.settings.library.folder,
+		};
+	}
+
+	/**
 	 * Record one-time build-execution consent (FR-18 / D11), stamping advisory
 	 * provenance (the schema version + an ISO timestamp). Persists immediately so
 	 * a crash after granting does not lose the user's decision.

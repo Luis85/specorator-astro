@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveSnapshotBodies } from '../../src/core/usecases/resolve-bodies';
-import type { EntrySnapshot, ViewSnapshot } from '../../src/core/domain/types';
+import { resolveSiteBodies, resolveSnapshotBodies } from '../../src/core/usecases/resolve-bodies';
+import type { EntrySnapshot, PageNode, ViewSnapshot } from '../../src/core/domain/types';
 
 /** Build a minimal one-group snapshot for a base at `route` with given entries. */
 function snapshot(route: string, entries: EntrySnapshot[]): ViewSnapshot {
@@ -79,5 +79,54 @@ describe('resolveSnapshotBodies', () => {
 		expect(
 			resolveSnapshotBodies(snaps).snapshots[0]?.groups[0]?.entries[0]?.body?.content,
 		).toBe(body);
+	});
+});
+
+/** Build a minimal page node at `route` with an optional body. */
+function page(path: string, route: string, content?: string, isHome = false): PageNode {
+	return {
+		path,
+		route,
+		title: path,
+		isHome,
+		frontmatter: {},
+		...(content !== undefined ? { body: { format: 'markdown' as const, content } } : {}),
+	};
+}
+
+describe('resolveSiteBodies', () => {
+	it('resolves a page body wikilink to a collection entry route (page↔collection)', () => {
+		const snaps = [snapshot('/books', [entry('Books/Dune.md', 'Dune')])];
+		const pages = [page('Site/pages/About.md', '/about', 'Read [[Dune]] today.')];
+		const { pages: out } = resolveSiteBodies(snaps, pages);
+		expect(out[0]?.body?.content).toBe('Read [Dune](/books/dune) today.');
+	});
+
+	it('resolves a page body wikilink to ANOTHER page route (page↔page)', () => {
+		const pages = [
+			page('Site/pages/Home.md', '/', 'Welcome.', true),
+			page('Site/pages/About.md', '/about', 'Back to [[Home]].'),
+		];
+		const { pages: out } = resolveSiteBodies([], pages);
+		expect(out[1]?.body?.content).toBe('Back to [Home](/).');
+	});
+
+	it('leaves a page without a body unchanged', () => {
+		const pages = [page('Site/pages/Empty.md', '/empty')];
+		const { pages: out } = resolveSiteBodies([], pages);
+		expect(out[0]).not.toHaveProperty('body');
+	});
+
+	it('degrades an off-site page link to plain text (graceful, D8)', () => {
+		const pages = [page('Site/pages/About.md', '/about', 'See [[Nowhere]].')];
+		const { pages: out } = resolveSiteBodies([], pages);
+		expect(out[0]?.body?.content).toBe('See Nowhere.');
+	});
+
+	it('surfaces a page-vs-listing route collision as a warning', () => {
+		const snaps = [snapshot('/about', [])];
+		const pages = [page('Site/pages/About.md', '/about', 'Hi.')];
+		const { warnings } = resolveSiteBodies(snaps, pages);
+		expect(warnings.some((w) => w.includes('/about'))).toBe(true);
 	});
 });

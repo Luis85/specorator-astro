@@ -19,7 +19,10 @@ function corePluginsFake(state: { bases?: boolean; webViewer?: boolean } = {}): 
 }
 
 /** A real `SyncSite` over fakes that records each `run()` into the shared order. */
-function syncFake(order: string[], result = { written: 2, warnings: ['stale cover'] }): SyncSite {
+function syncFake(
+	order: string[],
+	result = { written: 2, pages: 0, warnings: ['stale cover'] },
+): SyncSite {
 	const settings: SettingsPort = { readSiteConfig: async () => ({ includes: [] }) };
 	const bases: BasesPort = { harvest: vi.fn() };
 	const writer: SnapshotWriterPort = { commit: vi.fn(async () => {}) };
@@ -76,7 +79,7 @@ describe('BuildSite', () => {
 		const order: string[] = [];
 		const { build } = buildBuild({
 			order,
-			sync: syncFake(order, { written: 3, warnings: ['missing asset'] }),
+			sync: syncFake(order, { written: 3, pages: 0, warnings: ['missing asset'] }),
 		});
 
 		const result = await build.run();

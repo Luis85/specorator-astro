@@ -27,7 +27,7 @@ function syncFake(order: string[]): SyncSite {
 	const sync = new SyncSite(settings, bases, writer, corePluginsFake());
 	vi.spyOn(sync, 'run').mockImplementation(async () => {
 		order.push('sync');
-		return { written: 0, warnings: [] };
+		return { written: 0, pages: 0, warnings: [] };
 	});
 	return sync;
 }
