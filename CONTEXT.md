@@ -79,13 +79,14 @@ comments, and discussion.
   hard-gated by one-time **consent** (D11; §5.6).
 - **Component transpiler** — the pure `component-transpile.ts`
   (`transpileComponentNote`): raw note markdown → either a `TranspiledComponent`
-  (the generated `.astro` path `src/generated/{views,layouts,components}/<Name>.astro`
-    - contents) or a `SkippedNote` with a reason. A note that is not a well-formed
-      component (no `component:` frontmatter, no `name`, not exactly one ` ```astro `
-      fence, malformed metadata) is **skipped, never thrown** (FR-11g), so a stray
-      note neither emits a module nor crashes the sync. The `generated` tier it
-      targets shadows `user/` then `theme/` (FR-11j). The vault read + the
-      `src/generated/` write are the `ComponentLibraryTranspilePort`/adapter's job.
+  (its generated `.astro` path under
+  `src/generated/{views,layouts,components}/<Name>.astro` plus the file contents)
+  or a `SkippedNote` carrying a reason. A note that is not a well-formed component
+  (no `component:` frontmatter, no `name`, not exactly one ` ```astro ` fence,
+  malformed metadata) is **skipped, never thrown** (FR-11g), so a stray note
+  neither emits a module nor crashes the sync. The `generated` tier it targets
+  shadows `user/` then `theme/` (FR-11j). The vault read + the `src/generated/`
+  write are the `ComponentLibraryTranspilePort`/adapter's job.
 - **Consent gate** — the pure `consent.ts` (`shouldTranspileLibrary`) over a
   persisted, revocable `ConsentState` (`granted` + advisory `grantedVersion`/
   `grantedAt`), held in the versioned settings `library.consent` (default NOT
