@@ -274,6 +274,46 @@ async function assertGeneratedShadows(dist) {
 	);
 }
 
+/**
+ * Verify the C13 standalone pages (docs/DESIGN.md §5.7; FR-12, FR-15): the home
+ * page (`isHome: true`, route `/`) renders at `/` via index.astro, and a normal
+ * page (`/about`) renders its body — with a `[[wikilink]]` already resolved to
+ * an on-site entry route by the plugin (here, the fixture's pre-resolved link).
+ */
+async function assertPageRoutes(dist) {
+	// --- / — the home page renders its body (not the bundled placeholder) ---
+	const homeHtml = await readFile(path.join(dist, 'index.html'), 'utf8');
+	assertIncludes(homeHtml, 'class="sp-page"', '/ home page article');
+	assertIncludes(homeHtml, 'data-home="true"', '/ home page flag');
+	assertIncludes(homeHtml, 'This is the', '/ home page body');
+	assertIncludes(homeHtml, '<strong>home page</strong>', '/ home page markdown rendered');
+	// The home body's callout renders as callout markup.
+	assertIncludes(homeHtml, 'data-callout="tip"', '/ home callout');
+	// The resolved on-site link in the home body points at the listing route.
+	assertIncludes(homeHtml, 'href="/books"', '/ home resolved link');
+	// The bundled placeholder must NOT appear — the home page shadowed it.
+	if (homeHtml.includes('No collections synced yet')) {
+		throw new Error('/: placeholder rendered — the synced home page did not replace it.');
+	}
+
+	// --- /about — a normal page renders its body + the resolved wikilink ---
+	const aboutFile = path.join(dist, 'about', 'index.html');
+	if (!(await exists(aboutFile))) {
+		throw new Error(`Standalone page route /about missing (FR-12): ${aboutFile}`);
+	}
+	const aboutHtml = await readFile(aboutFile, 'utf8');
+	assertIncludes(aboutHtml, 'class="sp-page"', '/about page article');
+	assertIncludes(aboutHtml, 'About this site', '/about page title');
+	assertIncludes(aboutHtml, 'About body.', '/about page body');
+	// The wikilink (resolved to a route by the plugin before write) links out to
+	// an existing fixture entry's detail route.
+	assertIncludes(aboutHtml, 'href="/books/dune"', '/about resolved wikilink');
+
+	console.log(
+		'[verify:template] OK — home page renders at /; standalone page route built (FR-12).',
+	);
+}
+
 /** Read every bundled stylesheet under dist/_astro and concatenate in name order. */
 async function readBundledCss(dist) {
 	const astroDir = path.join(dist, '_astro');
@@ -411,6 +451,11 @@ async function main() {
 		// under src/generated/views/* shadows the same-named src/user/views/* (and
 		// theme), proven by the /library route rendering the generated override.
 		await assertGeneratedShadows(dist);
+
+		// C13: assert the standalone pages — the synced home page renders at / (not
+		// the bundled placeholder) and a normal page (/about) renders its body with
+		// a plugin-resolved wikilink (FR-12, FR-15; DESIGN §5.7).
+		await assertPageRoutes(dist);
 
 		console.log('[verify:template] OK — astro check + build succeeded; static routes emitted.');
 	} finally {

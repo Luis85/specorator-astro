@@ -1,0 +1,28 @@
+{
+	"version": 1,
+	"generatedAt": "2026-05-24T00:00:00.000Z",
+	"pages": [
+		{
+			"path": "Site/pages/Home.md",
+			"route": "/",
+			"title": "Welcome home",
+			"isHome": true,
+			"frontmatter": { "title": "Welcome home", "home": true },
+			"body": {
+				"format": "markdown",
+				"content": "This is the **home page**.\n\n> [!tip] Start here\n> Browse the [books listing](/books).\n"
+			}
+		},
+		{
+			"path": "Site/pages/About.md",
+			"route": "/about",
+			"title": "About this site",
+			"isHome": false,
+			"frontmatter": { "title": "About this site" },
+			"body": {
+				"format": "markdown",
+				"content": "About body. We recommend [Dune](/books/dune) as a starting point.\n"
+			}
+		}
+	]
+}
