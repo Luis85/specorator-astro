@@ -23,6 +23,8 @@ export default tseslint.config(
 			'coverage/**',
 			'docs/api/**',
 			'node_modules/**',
+			// Agent-harness scratch worktrees (Claude Code on the web) — not project source.
+			'.claude/**',
 			// Machine-generated template embed; kept in sync by `embed:template:check`.
 			'src/adapters/generated/**',
 			// The bundled Astro project is a separate program, type-checked and
