@@ -31,6 +31,14 @@ export class PreviewSite {
 	/** Latches once the first preview has auto-synced this session (FR-20/D2). */
 	private syncedThisSession = false;
 
+	/**
+	 * One-flight guard: the in-flight `run()` promise, or `null` when idle. A
+	 * second `run()` while a preview is still starting (a double command
+	 * invocation) joins the in-flight one instead of double-spawning a dev server
+	 * and racing on the process handle (FIX 1).
+	 */
+	private inFlight: Promise<{ url: string }> | null = null;
+
 	constructor(
 		private readonly bootstrap: ProjectBootstrapPort,
 		private readonly corePlugins: CorePluginsPort,
@@ -40,6 +48,21 @@ export class PreviewSite {
 	) {}
 
 	async run(): Promise<{ url: string }> {
+		// Coalesce concurrent invocations onto a single in-flight run so a
+		// double-clicked Preview can't spawn two dev servers / race the handle.
+		if (this.inFlight !== null) {
+			return this.inFlight;
+		}
+		const flight = this.runOnce();
+		this.inFlight = flight;
+		try {
+			return await flight;
+		} finally {
+			this.inFlight = null;
+		}
+	}
+
+	private async runOnce(): Promise<{ url: string }> {
 		const check = checkCorePlugins(
 			{
 				basesEnabled: this.corePlugins.isBasesEnabled(),

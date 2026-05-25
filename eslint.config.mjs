@@ -92,11 +92,17 @@ export default tseslint.config(
 		},
 	},
 
-	// Test files may use Node and the obsidian mock freely.
+	// Test files may use Node and the obsidian mock freely. The popout-window
+	// affordance rules (window timers / no-globalThis / config-dir) target the
+	// Obsidian *runtime*; tests run under Node and legitimately shim those globals,
+	// so they don't apply here.
 	{
 		files: ['test/**/*.ts'],
 		rules: {
 			'@typescript-eslint/no-explicit-any': 'off',
+			'obsidianmd/prefer-window-timers': 'off',
+			'obsidianmd/no-global-this': 'off',
+			'obsidianmd/hardcoded-config-path': 'off',
 		},
 	},
 

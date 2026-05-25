@@ -19,6 +19,13 @@ export type ToolchainResolver = () => ToolchainConfig;
 const DEV_URL_TIMEOUT_MS = 60_000;
 
 /**
+ * Grace period for {@link killTree} before it resolves even if the child's
+ * `close`/`exit` never fired (e.g. the Windows `taskkill` helper failed to
+ * spawn), so `stop()` can never hang indefinitely.
+ */
+const KILL_TREE_TIMEOUT_MS = 5_000;
+
+/**
  * Runs the project-local Astro binary out-of-process (DESIGN §5.3). It is the
  * default runner (NFR-2): a Vite dev server is heavy and long-running, so
  * isolating it from Obsidian's renderer avoids freezing the UI and contains
@@ -55,6 +62,11 @@ export class AstroProcessAdapter implements AstroProcessPort {
 	) {}
 
 	async startDev(): Promise<{ url: string }> {
+		// Tear down any prior dev/build process first so a second Preview (or
+		// Preview-then-Build) never overwrites `this.proc` and orphans the live
+		// Vite group still holding the port (FIX 1).
+		await this.stop();
+
 		const { port } = this.toolchain();
 		const child = this.spawnAstro(['dev', '--port', String(port)]);
 		this.proc = child;
@@ -101,21 +113,37 @@ export class AstroProcessAdapter implements AstroProcessPort {
 			});
 
 			child.on('close', (code) => {
-				// Exiting before a URL appears is a startup failure (e.g. ENOENT,
-				// config error). After resolution, a normal lifecycle close is ignored.
-				finish(() =>
-					reject(
-						new Error(
-							`Astro dev server exited before printing a URL (code ${String(code)}).`,
+				if (!settled) {
+					// Exiting before a URL appears is a startup failure (e.g. ENOENT,
+					// config error): reject and drop the (now-dead) handle.
+					finish(() =>
+						reject(
+							new Error(
+								`Astro dev server exited before printing a URL (code ${String(code)}).`,
+							),
 						),
-					),
-				);
-				this.proc = null;
+					);
+					if (this.proc === child) this.proc = null;
+					return;
+				}
+				// After resolution, the dev server died on its own (crash / external
+				// kill). The shell has exited, but Vite's detached descendants may
+				// still be alive holding the port — so tear down the whole group here
+				// rather than just nulling the handle, which would defeat a later
+				// `stop()` (FIX 2). `killTree` is a no-op once everything is gone.
+				if (this.proc === child) {
+					this.proc = null;
+					void killTree(child);
+				}
 			});
 		});
 	}
 
 	async build(): Promise<void> {
+		// Stop any prior dev/build process first so Build never overwrites the
+		// handle to a live dev server and orphans its Vite group (FIX 1).
+		await this.stop();
+
 		const child = this.spawnAstro(['build']);
 		this.proc = child;
 
@@ -124,12 +152,12 @@ export class AstroProcessAdapter implements AstroProcessPort {
 			child.stderr?.on('data', (chunk: Buffer) => this.output.write(chunk.toString()));
 
 			child.on('error', (error) => {
-				this.proc = null;
+				if (this.proc === child) this.proc = null;
 				reject(this.spawnError(error));
 			});
 
 			child.on('close', (code) => {
-				this.proc = null;
+				if (this.proc === child) this.proc = null;
 				if (code === 0) {
 					resolve();
 				} else {
@@ -215,14 +243,28 @@ function killTree(child: ChildProcess): Promise<void> {
 	}
 
 	return new Promise<void>((resolve) => {
-		const done = () => resolve();
+		let settled = false;
+		const done = () => {
+			if (settled) return;
+			settled = true;
+			window.clearTimeout(fallback);
+			resolve();
+		};
 		child.once('close', done);
 		child.once('exit', done);
+
+		// Safety net: if the child's `close`/`exit` never fires (e.g. `taskkill`
+		// failed to spawn on Windows, so the tree was never signalled), don't hang
+		// `stop()` forever — resolve after a short grace period (FIX 6).
+		const fallback = window.setTimeout(done, KILL_TREE_TIMEOUT_MS);
 
 		try {
 			if (process.platform === 'win32') {
 				// No POSIX process groups on Windows: walk and force-kill the tree.
-				spawn('taskkill', ['/pid', String(pid), '/T', '/F']);
+				const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F']);
+				// If the helper itself fails to spawn, `close`/`exit` on the child may
+				// never fire; resolve via the fallback (already armed) and don't crash.
+				killer.once('error', () => undefined);
 			} else {
 				// Negative pid targets the whole detached group, not just the shell.
 				process.kill(-pid, 'SIGTERM');

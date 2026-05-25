@@ -118,6 +118,46 @@ describe('PreviewSite', () => {
 		expect(order).toEqual([]);
 	});
 
+	it('coalesces concurrent run() calls onto one in-flight run (no double-spawn, FIX 1)', async () => {
+		const order: string[] = [];
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const startDev = vi.fn(async () => {
+			order.push('startDev');
+			await gate; // hold the first run() open so a second can race in.
+			return { url: 'http://localhost:4321' };
+		});
+		const bootstrap: ProjectBootstrapPort = {
+			ensureProject: vi.fn(async () => ({ projectDir: '/p' })),
+		};
+		const webViewer: WebViewerPort = { open: vi.fn(async () => {}) };
+		const preview = new PreviewSite(
+			bootstrap,
+			corePluginsFake(),
+			syncFake(order),
+			{ startDev, build: vi.fn(), stop: vi.fn() },
+			webViewer,
+		);
+
+		// Two overlapping invocations (e.g. a double-clicked command).
+		const first = preview.run();
+		const second = preview.run();
+		release();
+		const [a, b] = await Promise.all([first, second]);
+
+		// Both callers got the same result, but the dev server was started ONCE.
+		expect(a).toEqual(b);
+		expect(startDev).toHaveBeenCalledTimes(1);
+		expect(order.filter((s) => s === 'startDev')).toHaveLength(1);
+
+		// After the in-flight run settles, the latch is cleared so a later preview
+		// can start again (it skips the per-session auto-sync, but does start dev).
+		await preview.run();
+		expect(startDev).toHaveBeenCalledTimes(2);
+	});
+
 	it('propagates a dev-server failure without opening the preview', async () => {
 		const { preview, order } = buildPreview({
 			astro: {
