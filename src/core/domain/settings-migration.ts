@@ -28,6 +28,14 @@ export const SETTINGS_SCHEMA_VERSION = 1;
  */
 export const DEFAULT_LIBRARY_FOLDER = 'Site/components';
 
+/**
+ * Default vault folder for standalone **pages** (FR-12 / FR-8 / D19): a note in
+ * this folder is designated a website page (alongside the `site:true`/`page`
+ * frontmatter flag). Configurable in settings; this is the out-of-the-box
+ * `Site/pages` authoring layout, sibling to `Site/components`.
+ */
+export const DEFAULT_PAGES_FOLDER = 'Site/pages';
+
 /** Obsidian's default dev-server port (D19); auto-fallback happens at runtime. */
 export const DEFAULT_DEV_PORT = 4321;
 
@@ -91,6 +99,17 @@ export interface LibraryConfig {
 	consent: ConsentState;
 }
 
+/**
+ * Standalone-pages settings (FR-12, FR-8 / D19). Holds the configurable vault
+ * folder whose notes are designated website pages; the `site:true`/`page`
+ * frontmatter flag designates a page anywhere regardless of this folder. A blank
+ * folder turns folder-based designation off (frontmatter-flag only).
+ */
+export interface PagesConfig {
+	/** Vault folder whose notes become pages (default `Site/pages`). */
+	folder: string;
+}
+
 /** The whole persisted settings document, carrying its schema version. */
 export interface VersionedSettings {
 	/** Schema version of this persisted document (forward-migration anchor). */
@@ -105,6 +124,8 @@ export interface VersionedSettings {
 	export: ExportConfig;
 	/** Vault component-library folder + build-execution consent (FR-11f, FR-18). */
 	library: LibraryConfig;
+	/** Standalone-pages folder (FR-12). */
+	pages: PagesConfig;
 }
 
 /** Fresh defaults for a vault that has never persisted settings. */
@@ -116,6 +137,7 @@ export function defaultSettings(): VersionedSettings {
 		sync: { liveResync: DEFAULT_LIVE_RESYNC },
 		export: {},
 		library: { folder: DEFAULT_LIBRARY_FOLDER, consent: defaultConsent() },
+		pages: { folder: DEFAULT_PAGES_FOLDER },
 	};
 }
 
@@ -224,6 +246,20 @@ function parseLibrary(raw: unknown): LibraryConfig {
 }
 
 /**
+ * Tolerantly parse the standalone-pages config (FR-12): the pages folder
+ * defaults to {@link DEFAULT_PAGES_FOLDER} when absent/blank. Migration-safe:
+ * old data lacking `pages` gets the default folder (no schema bump — a defaulted
+ * field only fills in, never transforms existing data).
+ */
+function parsePages(raw: unknown): PagesConfig {
+	const folder =
+		isRecord(raw) && typeof raw.folder === 'string' && raw.folder.trim() !== ''
+			? raw.folder.trim()
+			: DEFAULT_PAGES_FOLDER;
+	return { folder };
+}
+
+/**
  * Upgrade any persisted settings blob to the current versioned schema.
  *
  * Handles three input classes:
@@ -232,11 +268,11 @@ function parseLibrary(raw: unknown): LibraryConfig {
  *   defaulted `toolchain`/`sync`.
  * - **a current versioned document** → re-parsed defensively (idempotent).
  *
- * New optional fields (e.g. `sync.liveResync`, `export.exportPath`, and the
- * `library` block with its **fail-closed** consent, all added after v1) are
- * *defaulted* for old persisted data by the tolerant per-field parsers below —
- * so no schema bump is needed since no existing data is
- * transformed, only filled in.
+ * New optional fields (e.g. `sync.liveResync`, `export.exportPath`, the
+ * `library` block with its **fail-closed** consent, and the `pages` folder, all
+ * added after v1) are *defaulted* for old persisted data by the tolerant
+ * per-field parsers below — so no schema bump is needed since no existing data
+ * is transformed, only filled in.
  *
  * Always returns a fully-populated, valid {@link VersionedSettings}; never throws.
  */
@@ -255,5 +291,6 @@ export function migrate(persisted: unknown): VersionedSettings {
 		sync: parseSync(persisted.sync),
 		export: parseExport(persisted.export),
 		library: parseLibrary(persisted.library),
+		pages: parsePages(persisted.pages),
 	};
 }

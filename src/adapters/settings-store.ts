@@ -7,6 +7,7 @@ import {
 	migrate,
 	type ExportConfig,
 	type LibraryConfig,
+	type PagesConfig,
 	type SyncConfig,
 	type ToolchainConfig,
 	type VersionedSettings,
@@ -84,6 +85,14 @@ export class SettingsStore implements SettingsPort, ComponentLibraryPort {
 	readLibraryConfig(): LibraryConfig {
 		const { library } = this.settings;
 		return { folder: library.folder, consent: { ...library.consent } };
+	}
+
+	/**
+	 * Snapshot the standalone-pages config (the pages folder, FR-12). The
+	 * page-loader adapter reads this to decide which notes are designated pages.
+	 */
+	readPagesConfig(): PagesConfig {
+		return { ...this.settings.pages };
 	}
 
 	/**

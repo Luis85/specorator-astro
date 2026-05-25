@@ -3,6 +3,7 @@ import {
 	DEFAULT_DEV_PORT,
 	DEFAULT_LIBRARY_FOLDER,
 	DEFAULT_LIVE_RESYNC,
+	DEFAULT_PAGES_FOLDER,
 	SETTINGS_SCHEMA_VERSION,
 	defaultSettings,
 	migrate,
@@ -10,6 +11,9 @@ import {
 
 /** The migration-safe default library block (folder set, consent NOT granted). */
 const DEFAULT_LIBRARY = { folder: DEFAULT_LIBRARY_FOLDER, consent: { granted: false } };
+
+/** The migration-safe default pages block (folder set). */
+const DEFAULT_PAGES = { folder: DEFAULT_PAGES_FOLDER };
 
 describe('settings migration', () => {
 	it('returns safe defaults for junk / nothing persisted', () => {
@@ -28,6 +32,7 @@ describe('settings migration', () => {
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
 			library: DEFAULT_LIBRARY,
+			pages: DEFAULT_PAGES,
 		});
 		// Live re-sync ships off (opt-in), per FR-20 / D2.
 		expect(DEFAULT_LIVE_RESYNC).toBe(false);
@@ -53,6 +58,7 @@ describe('settings migration', () => {
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
 			library: DEFAULT_LIBRARY,
+			pages: DEFAULT_PAGES,
 		});
 	});
 
@@ -98,6 +104,7 @@ describe('settings migration', () => {
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
 			library: DEFAULT_LIBRARY,
+			pages: DEFAULT_PAGES,
 		});
 	});
 
@@ -109,6 +116,7 @@ describe('settings migration', () => {
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
 			library: DEFAULT_LIBRARY,
+			pages: DEFAULT_PAGES,
 		});
 		expect(migrate({ toolchain: { port: -1 } }).toolchain.port).toBe(DEFAULT_DEV_PORT);
 		expect(migrate({ toolchain: { port: 4321.5 } }).toolchain.port).toBe(DEFAULT_DEV_PORT);
@@ -189,6 +197,30 @@ describe('settings migration', () => {
 	it('defaults a blank library folder back to the standard authoring layout', () => {
 		expect(migrate({ library: { folder: '   ' } }).library.folder).toBe(DEFAULT_LIBRARY_FOLDER);
 		expect(migrate({ library: { folder: 42 } }).library.folder).toBe(DEFAULT_LIBRARY_FOLDER);
+	});
+
+	it('defaults the pages folder for old data lacking it (migration-safe, FR-12)', () => {
+		const v1WithoutPages = {
+			version: 1,
+			site: { includes: [] },
+			toolchain: { port: 4321 },
+			sync: { liveResync: false },
+			export: {},
+			library: DEFAULT_LIBRARY,
+		};
+		expect(migrate(v1WithoutPages).pages).toEqual(DEFAULT_PAGES);
+	});
+
+	it('preserves and trims a configured pages folder', () => {
+		expect(migrate({ pages: { folder: '  Website/pages  ' } }).pages.folder).toBe(
+			'Website/pages',
+		);
+	});
+
+	it('defaults a blank/malformed pages folder back to the standard authoring layout', () => {
+		expect(migrate({ pages: { folder: '   ' } }).pages.folder).toBe(DEFAULT_PAGES_FOLDER);
+		expect(migrate({ pages: { folder: 42 } }).pages.folder).toBe(DEFAULT_PAGES_FOLDER);
+		expect(migrate({ pages: 'nope' }).pages).toEqual(DEFAULT_PAGES);
 	});
 
 	it('drops malformed includes and keeps optional fields only when non-empty', () => {

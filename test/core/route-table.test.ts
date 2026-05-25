@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildRouteTable, type RouteTableTarget } from '../../src/core/domain/route-table';
+import {
+	buildRouteTable,
+	type RouteTablePage,
+	type RouteTableTarget,
+} from '../../src/core/domain/route-table';
 
 /** Tiny helper to declare a target with bare-basename entries. */
 function target(
@@ -7,6 +11,11 @@ function target(
 	...entries: { path: string; basename: string; slug?: string }[]
 ): RouteTableTarget {
 	return { route, entries };
+}
+
+/** Tiny helper to declare a standalone page. */
+function page(path: string, route: string): RouteTablePage {
+	return { path, route };
 }
 
 describe('buildRouteTable — placement', () => {
@@ -154,5 +163,69 @@ describe('buildRouteTable — link resolver', () => {
 		]);
 		// The name resolves to the first entry's route; the second is disambiguated.
 		expect(t.resolve('Dup')).toBe('/n/dup');
+	});
+});
+
+describe('buildRouteTable — standalone pages (FR-12, FR-15)', () => {
+	it('places a page route (incl. the home page `/`) before listings and details', () => {
+		const table = buildRouteTable(
+			[target('/books', { path: 'Books/Dune.md', basename: 'Dune' })],
+			[page('Site/pages/Home.md', '/'), page('Site/pages/About.md', '/about')],
+		);
+		expect(table.routes).toEqual([
+			{ route: '/', kind: 'page', pagePath: 'Site/pages/Home.md' },
+			{ route: '/about', kind: 'page', pagePath: 'Site/pages/About.md' },
+			{ route: '/books', kind: 'listing' },
+			{ route: '/books/dune', kind: 'detail', entryPath: 'Books/Dune.md' },
+		]);
+		expect(table.pageRoutesByPath.get('Site/pages/Home.md')).toBe('/');
+		expect(table.pageRoutesByPath.get('Site/pages/About.md')).toBe('/about');
+		expect(table.warnings).toHaveLength(0);
+	});
+
+	it('skips a later page that collides with an earlier page (page-vs-page, first wins)', () => {
+		const table = buildRouteTable(
+			[],
+			[page('Site/pages/About.md', '/about'), page('Site/pages/About2.md', '/about')],
+		);
+		expect(table.routes.filter((r) => r.kind === 'page')).toHaveLength(1);
+		expect(table.pageRoutesByPath.has('Site/pages/About2.md')).toBe(false);
+		expect(table.warnings.some((w) => w.includes('Page route "/about"'))).toBe(true);
+	});
+
+	it('skips a listing that collides with a page (page-vs-collection: the page wins)', () => {
+		const table = buildRouteTable([target('/about')], [page('Site/pages/About.md', '/about')]);
+		// The page is placed; the same-route listing is skipped (page placed first).
+		expect(table.routes.filter((r) => r.kind === 'page')).toHaveLength(1);
+		expect(table.routes.filter((r) => r.kind === 'listing')).toHaveLength(0);
+		expect(table.warnings.some((w) => w.includes('Listing route "/about"'))).toBe(true);
+	});
+
+	it('disambiguates a detail route that collides with a page (page-vs-detail)', () => {
+		const table = buildRouteTable(
+			[target('/books', { path: 'Books/About.md', basename: 'About', slug: '/about' })],
+			[page('Site/pages/About.md', '/about')],
+		);
+		// The page owns `/about`; the colliding detail gets a numeric suffix.
+		expect(table.detailRoutesByPath.get('Books/About.md')).toBe('/about-1');
+		expect(table.warnings.some((w) => w.includes('page'))).toBe(true);
+	});
+
+	it('resolves a wikilink to a page by name and by path', () => {
+		const table = buildRouteTable([], [page('Site/pages/About.md', '/about')]);
+		expect(table.resolve('About')).toBe('/about');
+		expect(table.resolve('Site/pages/About.md')).toBe('/about');
+		expect(table.resolve('Site/pages/About')).toBe('/about');
+	});
+
+	it('resolves a wikilink to the home page note (`/`)', () => {
+		const table = buildRouteTable([], [page('Site/pages/Home.md', '/')]);
+		expect(table.resolve('Home')).toBe('/');
+	});
+
+	it('defaults to no pages (existing collection-only behavior unchanged)', () => {
+		const table = buildRouteTable([target('/books')]);
+		expect(table.pageRoutesByPath.size).toBe(0);
+		expect(table.routes.every((r) => r.kind !== 'page')).toBe(true);
 	});
 });

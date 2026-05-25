@@ -79,6 +79,32 @@ export interface EntryBody {
 	content: string;
 }
 
+/**
+ * A standalone website page derived from a designated vault note (FR-12, FR-15;
+ * DESIGN §5.7, §6). One `PageNode` is emitted per designated note — a note that
+ * either lives in the configured `Site/pages` folder or carries an opt-in
+ * frontmatter flag (`site: true` / `type: page`). The note becomes a route in
+ * the shared `[...slug]` namespace; exactly one designated note may be the
+ * **home page** (`/`). The `body` is the note's markdown (frontmatter stripped)
+ * with `[[wikilinks]]` resolved to site routes against the route table before
+ * write; `frontmatter` carries the note's raw frontmatter (for the title and
+ * future SEO/nav hints). The writer commits these in a `pages` snapshot.
+ */
+export interface PageNode {
+	/** Vault-relative path of the backing note, e.g. `Site/pages/About.md`. */
+	path: string;
+	/** Normalized site route with a leading slash (the home page is `/`). */
+	route: string;
+	/** Human title for the page (frontmatter `title`, else the note basename). */
+	title: string;
+	/** Whether this page is the site home (`/`). At most one page is the home. */
+	isHome: boolean;
+	/** The note's raw frontmatter (title/SEO/nav hints); JSON-serializable subset. */
+	frontmatter: Record<string, CellValue>;
+	/** The page body (markdown, frontmatter stripped). Absent → an empty page. */
+	body?: EntryBody;
+}
+
 /** One harvested entry (a note matching the base's filters). */
 export interface EntrySnapshot {
 	path: string;

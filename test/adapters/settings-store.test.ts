@@ -45,6 +45,7 @@ describe('SettingsStore', () => {
 			sync: { liveResync: DEFAULT_LIVE_RESYNC },
 			export: {},
 			library: { folder: 'Site/components', consent: { granted: false } },
+			pages: { folder: 'Site/pages' },
 		});
 	});
 

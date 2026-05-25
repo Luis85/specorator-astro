@@ -139,10 +139,39 @@ export class SiteSettingTab extends PluginSettingTab {
 				}),
 		);
 
+		this.displayPages(containerEl);
 		this.displayComponentLibrary(containerEl);
 		this.displaySyncTriggers(containerEl);
 		this.displayToolchain(containerEl);
 		this.displayBuild(containerEl);
+	}
+
+	/**
+	 * Standalone pages section (FR-12 / FR-8). Sets the vault folder whose notes
+	 * become website pages (default `Site/pages`, configurable). A note carrying a
+	 * `site: true` / `type: page` frontmatter flag is also published from anywhere;
+	 * one page (an explicit `home: true`, or an `index`/`home` note in the folder)
+	 * becomes the home page (`/`).
+	 */
+	private displayPages(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Pages').setHeading();
+
+		new Setting(containerEl)
+			.setName('Pages folder')
+			.setDesc(
+				'Vault folder whose notes become standalone website pages. A note with `site: true` or `type: page` frontmatter is also published as a page from anywhere. One page (an explicit `home: true`, or an `index`/`home` note in the folder) becomes the home page (/).',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder('Site/pages')
+					.setValue(this.store.readPagesConfig().folder)
+					.onChange((value) => {
+						const trimmed = value.trim();
+						this.store.edit((settings) => {
+							settings.pages.folder = trimmed === '' ? 'Site/pages' : trimmed;
+						});
+					}),
+			);
 	}
 
 	/**

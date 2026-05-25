@@ -47,8 +47,21 @@ export interface RouteTableTarget {
 	entries: readonly RouteTableEntry[];
 }
 
+/**
+ * A standalone page that claims a route in the shared `[...slug]` namespace
+ * (FR-12, FR-15; DESIGN §5.7). Its `route` is the page's *preferred* route (the
+ * home page's is `/`), already derived by {@link buildPageNodes}; the table
+ * places it and detects collisions against every other route.
+ */
+export interface RouteTablePage {
+	/** Vault-relative path of the backing note, e.g. `Site/pages/About.md`. */
+	path: string;
+	/** Preferred normalized route (leading slash; the home page is `/`). */
+	route: string;
+}
+
 /** What kind of page a placed route renders. */
-export type RouteKind = 'listing' | 'detail';
+export type RouteKind = 'listing' | 'detail' | 'page';
 
 /** One placed route in the namespace. */
 export interface PlacedRoute {
@@ -57,6 +70,8 @@ export interface PlacedRoute {
 	kind: RouteKind;
 	/** For a detail route, the vault path of the entry it renders; else `undefined`. */
 	entryPath?: string;
+	/** For a page route, the vault path of the backing note; else `undefined`. */
+	pagePath?: string;
 }
 
 /**
@@ -76,6 +91,8 @@ export interface RouteTable {
 	warnings: string[];
 	/** Per-target detail routes keyed by entry vault path (post-collision). */
 	detailRoutesByPath: ReadonlyMap<string, string>;
+	/** Per-page routes keyed by the page note's vault path (post-collision). */
+	pageRoutesByPath: ReadonlyMap<string, string>;
 	/** Resolve a vault path / note name to a route, or `null` (off-site). */
 	resolve: RouteResolver;
 }
@@ -114,17 +131,32 @@ function stripExt(name: string): string {
 }
 
 /**
- * Build the full route table from the resolved targets and their harvested
- * entries. Listing routes are placed first (they are already collision-checked
- * by `planSync`, but a defensive check keeps the namespace consistent), then
- * detail routes; a detail route that would collide with anything already placed
- * is disambiguated (never dropped — every published entry keeps a page, FR-21).
+ * Build the full route table from the resolved targets, their harvested entries,
+ * and any standalone pages. Placement order is **pages → listings → details**:
+ *
+ * 1. **Pages** are placed first (FR-12): a standalone page is an authored,
+ *    explicit route — including the home page `/` — so it owns its route first
+ *    (first-wins). A later page that collides with an earlier page or listing is
+ *    skipped, matching `planSync`'s listing-collision style.
+ * 2. **Listing** routes next (already de-duped by `planSync`, but a defensive
+ *    check keeps the namespace consistent); a listing colliding with a page or
+ *    another listing is skipped — first wins.
+ * 3. **Detail** routes last; one that collides with anything already placed (a
+ *    page, a listing, or an earlier detail) is disambiguated with a numeric
+ *    suffix and a warning, so every published entry still renders (FR-21).
+ *
+ * The placed page/detail routes both feed the link resolver, so a `[[wikilink]]`
+ * to a page or a collection entry resolves to the right route.
  */
-export function buildRouteTable(targets: readonly RouteTableTarget[]): RouteTable {
+export function buildRouteTable(
+	targets: readonly RouteTableTarget[],
+	pages: readonly RouteTablePage[] = [],
+): RouteTable {
 	const warnings: string[] = [];
 	const routes: PlacedRoute[] = [];
 	const taken = new Map<string, PlacedRoute>();
 	const detailRoutesByPath = new Map<string, string>();
+	const pageRoutesByPath = new Map<string, string>();
 
 	// Index for the link resolver: lowercased vault path AND lowercased note name
 	// → route. The path key is exact; the name key resolves bare `[[wikilinks]]`.
@@ -136,9 +168,35 @@ export function buildRouteTable(targets: readonly RouteTableTarget[]): RouteTabl
 		routes.push(placed);
 	};
 
-	// 1) Listing routes first. `planSync` already de-duped them, but a listing
-	//    that still collides here (e.g. an explicit route equal to another's) is
+	const addLinkKeys = (notePath: string, route: string): void => {
+		byPath.set(notePath.toLowerCase(), route);
+		const name = stripExt(basenameOf(notePath)).toLowerCase();
+		if (!byName.has(name)) {
+			byName.set(name, route);
+		}
+	};
+
+	// 1) Standalone pages first. A page is an explicit authored route (the home
+	//    page is `/`); a later page colliding with an earlier page/listing is
 	//    skipped — first wins, matching `planSync`'s collision style.
+	for (const page of pages) {
+		const route = normalize(page.route);
+		const existing = taken.get(route);
+		if (existing) {
+			warnings.push(
+				`Page route "${route}" for ${page.path} collides with an already-placed ` +
+					`${existing.kind} route; the later page was skipped.`,
+			);
+			continue;
+		}
+		place({ route, kind: 'page', pagePath: page.path });
+		pageRoutesByPath.set(page.path, route);
+		addLinkKeys(page.path, route);
+	}
+
+	// 2) Listing routes. `planSync` already de-duped them, but a listing that
+	//    still collides here (a page's route, or another listing) is skipped —
+	//    first wins, matching `planSync`'s collision style.
 	for (const target of targets) {
 		const route = normalize(target.route);
 		const existing = taken.get(route);
@@ -152,9 +210,9 @@ export function buildRouteTable(targets: readonly RouteTableTarget[]): RouteTabl
 		place({ route, kind: 'listing' });
 	}
 
-	// 2) Detail routes. A detail route that collides with a listing or an
-	//    earlier detail is disambiguated with a numeric suffix and a warning, so
-	//    every published entry still renders its own page (FR-21).
+	// 3) Detail routes. A detail route that collides with anything already placed
+	//    (a page, a listing, or an earlier detail) is disambiguated with a numeric
+	//    suffix and a warning, so every published entry still renders (FR-21).
 	for (const target of targets) {
 		const listingRoute = normalize(target.route);
 		for (const entry of target.entries) {
@@ -182,7 +240,13 @@ export function buildRouteTable(targets: readonly RouteTableTarget[]): RouteTabl
 
 	const resolve: RouteResolver = (target) => resolveLink(target, byPath, byName);
 
-	return { routes, warnings, detailRoutesByPath, resolve };
+	return { routes, warnings, detailRoutesByPath, pageRoutesByPath, resolve };
+}
+
+/** Bare basename (drop folders) for a vault path, separator-tolerant. */
+function basenameOf(path: string): string {
+	const clean = path.replace(/\\/g, '/').replace(/\/+$/g, '');
+	return clean.slice(clean.lastIndexOf('/') + 1);
 }
 
 /**
