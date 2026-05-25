@@ -25,6 +25,12 @@
 			"view": "Showcase",
 			"route": "/showcase",
 			"file": "snapshots/showcase.json"
+		},
+		{
+			"baseId": "library",
+			"view": "Library",
+			"route": "/library",
+			"file": "snapshots/library.json"
 		}
 	]
 }

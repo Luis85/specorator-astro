@@ -1,0 +1,35 @@
+---
+// Generated from the vault component note "LibraryCard" (kind: view).
+// DO NOT EDIT — regenerated from the library on sync (DESIGN §5.6, FR-11g).
+//
+// Fixture-only GENERATED-tier component that proves the C12 registry precedence
+// (FR-11j): a `src/generated/views/*` transpiled vault component shadows BOTH a
+// same-named `src/user/views/*` and the bundled `src/theme/views/*`. The
+// verify:template gate routes the `/library` snapshot to
+// `component: "LibraryCard"` and asserts THIS sentinel renders, beating the
+// same-named user copy. This mirrors the shape transpileComponentNote emits
+// (generated props comment prepended, authored block verbatim).
+import type { EntrySnapshot, EntryGroup, ViewSnapshot } from '../../content/schema';
+
+interface Props {
+	snapshot?: ViewSnapshot;
+}
+
+const { snapshot } = Astro.props;
+const entries: EntrySnapshot[] = snapshot
+	? snapshot.groups.flatMap((group: EntryGroup) => group.entries)
+	: [];
+---
+
+<section class="sp-generated-shadow" data-view="generated-library-card">
+	<p data-shadow-marker="generated-wins">Rendered by the GENERATED (vault) component.</p>
+	<ul>
+		{
+			entries.map((entry) => (
+				<li>
+					<a href={entry.route}>{entry.basename}</a>
+				</li>
+			))
+		}
+	</ul>
+</section>

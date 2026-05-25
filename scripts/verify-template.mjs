@@ -244,6 +244,36 @@ async function assertRegistryPrecedence(dist) {
 	);
 }
 
+/**
+ * Verify the C12 generated-tier precedence (docs/DESIGN.md §5.6; FR-11j): a
+ * transpiled vault component under `src/generated/views/*` shadows a same-named
+ * `src/user/views/*` (and the theme default), proving the registry barrel's
+ * highest-precedence tier wins (generated → user → theme). The fixture overlays
+ * BOTH `generated/views/LibraryCard.astro` (sentinel `generated-wins`) and
+ * `user/views/LibraryCard.astro` (a marker that must NOT appear) and routes the
+ * `/library` snapshot to `render.component: "LibraryCard"`; this asserts the
+ * built page rendered the GENERATED component, not the user copy.
+ */
+async function assertGeneratedShadows(dist) {
+	const file = path.join(dist, 'library', 'index.html');
+	if (!(await exists(file))) {
+		throw new Error(`Generated-shadows route /library missing (FR-11j): ${file}`);
+	}
+	const html = await readFile(file, 'utf8');
+	// The generated (vault) component rendered — generated beats user + theme.
+	assertIncludes(html, 'data-shadow-marker="generated-wins"', '/library generated override');
+	assertIncludes(html, 'data-view="generated-library-card"', '/library generated view');
+	// The same-named USER component must NOT appear — it was shadowed by generated.
+	if (html.includes('user-libcard-should-be-shadowed')) {
+		throw new Error(
+			'/library: user LibraryCard rendered — generated did not shadow it (FR-11j broken).',
+		);
+	}
+	console.log(
+		'[verify:template] OK — generated (vault) component shadows the same-named user/theme (FR-11j).',
+	);
+}
+
 /** Read every bundled stylesheet under dist/_astro and concatenate in name order. */
 async function readBundledCss(dist) {
 	const astroDir = path.join(dist, '_astro');
@@ -376,6 +406,11 @@ async function main() {
 		// shadows the same-named theme default via the glob-based registry barrel
 		// (FR-11b/j), proven by the /showcase route rendering the user override.
 		await assertRegistryPrecedence(dist);
+
+		// C12: assert the generated-tier precedence — a transpiled vault component
+		// under src/generated/views/* shadows the same-named src/user/views/* (and
+		// theme), proven by the /library route rendering the generated override.
+		await assertGeneratedShadows(dist);
 
 		console.log('[verify:template] OK — astro check + build succeeded; static routes emitted.');
 	} finally {
