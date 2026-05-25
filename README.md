@@ -3,10 +3,10 @@
 Turn the collections you already keep in Obsidian into a real, good-looking
 website — and preview that website **inside Obsidian** while you work.
 
-> **Status:** in design / pre-release. This repository currently contains the
-> design and requirements (see [`docs/DESIGN.md`](docs/DESIGN.md) and
-> [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)); the plugin itself is being
-> built. The sections below describe the experience it is designed to deliver.
+> **Status:** beta. The plugin is installable via [BRAT](#installing-beta-via-brat)
+> (or manually from a release) and covers the core experience described below.
+> The full design and requirements live in [`docs/DESIGN.md`](docs/DESIGN.md) and
+> [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md).
 
 ## What it does
 
