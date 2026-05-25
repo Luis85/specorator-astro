@@ -29,32 +29,55 @@ export async function getStaticPaths() {
 	// `[...slug]` param is slash-relative, so drop the route's leading slash.
 	const toParam = (route: string): string => route.replace(/^\/+/, '');
 
-	const entries = await getCollection('snapshots');
-	const paths: {
+	type Path = {
 		params: { slug: string };
 		props: { snapshot?: ViewSnapshot; entry?: EntrySnapshot; page?: PageNode };
-	}[] = [];
+	};
 
+	// Collect candidates per tier, then de-dup across them. The core route table
+	// (`src/core/domain/route-table.ts`) already prevents collisions with a fixed
+	// precedence — **pages → listings → details** (first-wins within a tier) — but
+	// the template enumerates two collections and has zero defense, so a writer-side
+	// bug that emitted a duplicate `slug` here would make Astro throw "duplicate
+	// route" and HARD-FAIL `astro build`. De-duplicate defensively, matching that
+	// core precedence exactly, so a stray collision degrades to one route winning
+	// (a graceful loss) instead of a fatal build.
+	const listings: Path[] = [];
+	const details: Path[] = [];
+
+	const entries = await getCollection('snapshots');
 	for (const collectionEntry of entries) {
 		const snapshot = collectionEntry.data;
 		// The listing page (the collection entry id is the listing route).
-		paths.push({ params: { slug: toParam(collectionEntry.id) }, props: { snapshot } });
+		listings.push({ params: { slug: toParam(collectionEntry.id) }, props: { snapshot } });
 
 		// One detail page per published entry, addressed by the entry's route.
 		for (const group of snapshot.groups) {
 			for (const entry of group.entries) {
-				paths.push({ params: { slug: toParam(entry.route) }, props: { snapshot, entry } });
+				details.push({ params: { slug: toParam(entry.route) }, props: { snapshot, entry } });
 			}
 		}
 	}
 
 	// One static page per NON-home standalone page (FR-12). The home page renders
 	// at `/` via `index.astro`, so skip its empty slug to avoid a route collision.
+	const pageCandidates: Path[] = [];
 	const pages = await getCollection('pages');
 	for (const collectionEntry of pages) {
 		const page = collectionEntry.data;
 		if (page.isHome) continue;
-		paths.push({ params: { slug: toParam(page.route) }, props: { page } });
+		pageCandidates.push({ params: { slug: toParam(page.route) }, props: { page } });
+	}
+
+	// De-dup by `slug` honoring the core precedence (pages > listings > details);
+	// the FIRST candidate to claim a slug wins (matching the route table's
+	// first-wins within a tier). Later collisions are dropped — defense-in-depth.
+	const paths: Path[] = [];
+	const seen = new Set<string>();
+	for (const candidate of [...pageCandidates, ...listings, ...details]) {
+		if (seen.has(candidate.params.slug)) continue;
+		seen.add(candidate.params.slug);
+		paths.push(candidate);
 	}
 
 	return paths;
