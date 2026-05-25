@@ -24,11 +24,36 @@ export class TFile {
 	stat: { size: number } = { size: 0 };
 }
 
+/** Minimal `TFolder` stand-in (only `instanceof` is used by adapter code). */
+export class TFolder {
+	path = '';
+}
+
 /** Stand-in for `FileSystemAdapter` (only `instanceof` + `getBasePath` are used). */
 export class FileSystemAdapter {
 	getBasePath(): string {
 		return '/vault';
 	}
+}
+
+/**
+ * Minimal YAML parser stand-in for the page loader's frontmatter fallback. Only
+ * handles the flat `key: value` shape the adapter test exercises; real parsing
+ * is Obsidian's at runtime. Recognizes booleans, numbers, and bare strings.
+ */
+export function parseYaml(input: string): unknown {
+	const out: Record<string, unknown> = {};
+	for (const line of input.split(/\r?\n/)) {
+		const match = /^([\w.-]+):\s*(.*)$/.exec(line.trim());
+		if (match === null) continue;
+		const [, key, rawValue] = match;
+		const value = rawValue.trim();
+		if (value === 'true') out[key] = true;
+		else if (value === 'false') out[key] = false;
+		else if (value !== '' && !Number.isNaN(Number(value))) out[key] = Number(value);
+		else out[key] = value.replace(/^["']|["']$/g, '');
+	}
+	return out;
 }
 
 // Synchronous stand-in so unit tests can drive debounced callbacks deterministically.

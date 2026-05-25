@@ -1,4 +1,5 @@
-import type { ResolvedTarget, SiteConfig, ViewSnapshot } from './domain/types';
+import type { PageNode, ResolvedTarget, SiteConfig, ViewSnapshot } from './domain/types';
+import type { RawPageNote } from './domain/pages';
 import type { TemplateFile } from './domain/template';
 import type { AssetCopyTask, AssetLocation } from './usecases/resolve-assets';
 import type { DiscoveredRegistry } from './domain/registry';
@@ -8,6 +9,14 @@ import type { TranspiledComponent } from './domain/component-transpile';
 /** Provides the user's site configuration (managed in the plugin's settings). */
 export interface SettingsPort {
 	readSiteConfig(): Promise<SiteConfig>;
+	/**
+	 * The configured standalone-pages folder + component-library folder (FR-12,
+	 * FR-11i). `SyncSite` passes these to the pure `buildPageNodes` so designation
+	 * (folder membership) and the FR-11i component-library exclusion are decided
+	 * over the same folders the page-loader adapter pre-filtered with. Optional so
+	 * minimal test wirings (no pages) need not implement it.
+	 */
+	readPageFolders?(): { pagesFolder: string; libraryFolder: string };
 }
 
 /**
@@ -55,10 +64,36 @@ export interface BasesPort {
 	harvest(target: ResolvedTarget): Promise<ViewSnapshot>;
 }
 
+/**
+ * Reads candidate standalone-page notes from the vault (FR-12; DESIGN §5.7).
+ *
+ * The **decision** of which notes are designated pages, their routes, and the
+ * home-page selection is pure (`isDesignatedPage`/`buildPageNodes`); this port
+ * is the thin I/O seam that supplies the raw candidate notes the pure folder
+ * decides over. The adapter scans markdown notes via the Vault API, reads each
+ * note's frontmatter (the metadata cache / `parseYaml`) and its body
+ * (`cachedRead` + `toBody`), and returns one {@link RawPageNote} per candidate.
+ *
+ * It MAY pre-filter to the configured pages folder + frontmatter-flagged notes
+ * for efficiency, but designation is ultimately re-decided by the pure core, so
+ * supplying a superset is harmless (non-designated notes are dropped there).
+ */
+export interface PageLoaderPort {
+	/** Read the raw candidate page notes (path + frontmatter + optional body). */
+	loadPages(): Promise<RawPageNote[]>;
+}
+
 /** Persists snapshots into the Astro project's data directory. */
 export interface SnapshotWriterPort {
-	/** Atomically replace all persisted snapshots with exactly this set. */
-	commit(snapshots: ViewSnapshot[]): Promise<void>;
+	/**
+	 * Atomically replace all persisted snapshots **and** standalone pages with
+	 * exactly these sets, in a single atomic swap (FR-3, FR-12). `pages` defaults
+	 * to empty so callers/tests that only commit collection snapshots are
+	 * unaffected; when present, the page set is committed in the SAME swap as the
+	 * snapshots, so a failed commit leaves the prior data dir (snapshots + pages)
+	 * intact.
+	 */
+	commit(snapshots: ViewSnapshot[], pages?: PageNode[]): Promise<void>;
 }
 
 /**
