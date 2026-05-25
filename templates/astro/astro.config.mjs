@@ -55,7 +55,17 @@ if (!siteUrl) {
 // Static output is mandatory: the published site is a deployable static bundle
 // and @astrojs/sitemap (C15) crawls statically-generated routes (docs/DESIGN.md
 // §5.7, REQUIREMENTS.md FR-14). Do not switch to SSR.
+//
+// `trailingSlash: 'never'` keeps canonical/OpenGraph URLs and the sitemap `<loc>`s
+// in the SAME no-trailing-slash form the plugin's route table emits and that
+// nav/breadcrumb/body links use (`/books`, not `/books/`). Without it, the default
+// directory build leaves canonical/sitemap on a trailing-slash form while every
+// internal href is slashless — an internal-link/canonical mismatch (an extra
+// redirect hop, split analytics). We keep the directory build format (pages still
+// emit as `<route>/index.html`) so only the URL *form* is normalized, not the
+// on-disk layout.
 export default defineConfig({
 	output: 'static',
+	trailingSlash: 'never',
 	...(siteUrl ? { site: siteUrl, integrations: [sitemap()] } : {}),
 });
