@@ -64,7 +64,52 @@ describe('SyncSite', () => {
 			'Projects/projects.base',
 		]);
 		expect(result.written).toBe(2);
-		expect(result.warnings).toHaveLength(0);
+		// No site URL in this config → one non-fatal SEO-degradation warning (FR-23).
+		expect(result.warnings.some((w) => w.includes('No site URL set'))).toBe(true);
+	});
+
+	it('passes the settings site URL to commit so the template build can set Astro `site` (FR-14, FR-23)', async () => {
+		const config: SiteConfig = {
+			siteUrl: '  https://example.com  ',
+			includes: [{ basePath: 'Books/books.base', viewName: 'Cards' }],
+		};
+		const committedSiteUrls: (string | undefined)[] = [];
+		const settings: SettingsPort = { readSiteConfig: async () => config };
+		const bases: BasesPort = { harvest: async (t) => snapshotFor(t) };
+		const writer: SnapshotWriterPort = {
+			commit: async (_snapshots, _pages, _navigation, siteUrl) => {
+				committedSiteUrls.push(siteUrl);
+			},
+		};
+
+		const result = await new SyncSite(settings, bases, writer, corePluginsFake()).run();
+
+		// The URL is trimmed before commit; with a URL set, no SEO-degradation warning.
+		expect(committedSiteUrls).toEqual(['https://example.com']);
+		expect(result.warnings.some((w) => w.includes('No site URL set'))).toBe(false);
+	});
+
+	it('warns (does not fail) and commits without a site URL when none is set (FR-23)', async () => {
+		const config: SiteConfig = {
+			siteUrl: '   ',
+			includes: [{ basePath: 'Books/books.base', viewName: 'Cards' }],
+		};
+		const committedSiteUrls: (string | undefined)[] = [];
+		const settings: SettingsPort = { readSiteConfig: async () => config };
+		const bases: BasesPort = { harvest: async (t) => snapshotFor(t) };
+		const writer: SnapshotWriterPort = {
+			commit: async (_snapshots, _pages, _navigation, siteUrl) => {
+				committedSiteUrls.push(siteUrl);
+			},
+		};
+
+		const result = await new SyncSite(settings, bases, writer, corePluginsFake()).run();
+
+		// A whitespace-only URL is treated as absent: commit gets undefined, and the
+		// sync still succeeds with a non-fatal warning (warn-don't-fail).
+		expect(committedSiteUrls).toEqual([undefined]);
+		expect(result.written).toBe(1);
+		expect(result.warnings.some((w) => w.includes('No site URL set'))).toBe(true);
 	});
 
 	it('returns plan warnings and commits an empty set when nothing is published', async () => {
@@ -75,10 +120,12 @@ describe('SyncSite', () => {
 
 		const result = await new SyncSite(settings, bases, writer, corePluginsFake()).run();
 
-		expect(commit).toHaveBeenCalledWith([], [], { items: [] });
+		expect(commit).toHaveBeenCalledWith([], [], { items: [] }, undefined);
 		expect(result.written).toBe(0);
 		expect(result.pages).toBe(0);
-		expect(result.warnings).toHaveLength(1);
+		// The empty-publish plan warning plus the SEO "no site URL" warning (FR-23).
+		expect(result.warnings).toHaveLength(2);
+		expect(result.warnings.some((w) => w.includes('No site URL set'))).toBe(true);
 	});
 
 	it('runs the asset pipeline: rewrites image values, copies the plan, commits (FR-16)', async () => {

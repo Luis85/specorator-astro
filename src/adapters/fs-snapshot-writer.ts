@@ -24,6 +24,13 @@ const PAGES_FILENAME = 'pages.json';
 /** The resolved navigation tree the template's nav loader reads (FR-13). */
 const NAVIGATION_FILENAME = 'navigation.json';
 
+/**
+ * The site-config sidecar `astro.config.mjs` reads synchronously at config load
+ * to set Astro's `site` (required by `@astrojs/sitemap` + canonical/OG, FR-14,
+ * FR-23). Committed in the SAME atomic swap as the other manifests.
+ */
+const SITE_FILENAME = 'site.json';
+
 /** One entry in {@link SnapshotIndex.snapshots}. */
 interface SnapshotIndexEntry {
 	/** The snapshot's `baseId` (`ViewSnapshot.baseId`). */
@@ -67,6 +74,20 @@ interface NavigationManifest {
 }
 
 /**
+ * Shape of `<dataDir>/site.json` — the SEO sidecar (FR-14, FR-23; DESIGN §5.7).
+ * `astro.config.mjs` reads it synchronously at config load to set Astro's `site`
+ * (enabling `@astrojs/sitemap` + canonical/OpenGraph). `siteUrl` is optional:
+ * absent/empty leaves `site` unset so dev/build still succeed, with SEO degrading
+ * gracefully (warn-don't-fail). Always written so the config never reads a stale
+ * URL after the user clears it.
+ */
+interface SiteManifest {
+	version: number;
+	generatedAt: string;
+	siteUrl?: string;
+}
+
+/**
  * Writes snapshots into the Astro project's data directory (FR-3; DESIGN §5.2).
  *
  * On-disk layout (relative to the project dir passed to the constructor):
@@ -77,16 +98,17 @@ interface NavigationManifest {
  *   snapshots/<slug>.json       # one ViewSnapshot per file, slug derived from baseId
  *   pages.json                  # standalone-pages manifest: { version, generatedAt, pages: PageNode[] }
  *   navigation.json             # navigation manifest: { version, generatedAt, navigation: NavigationTree }
+ *   site.json                   # SEO sidecar: { version, generatedAt, siteUrl? } (FR-14, FR-23)
  * ```
  *
  * The whole `data/` directory is **atomically replaced** on every `commit`:
- * the full set — snapshots, standalone pages (FR-12), AND the resolved
- * navigation tree (FR-13) — is staged in a sibling temp dir, fsynced, then
- * swapped into place in ONE atomic rename. A commit that fails partway never
- * leaves a half-written `data/` — the previous directory (snapshots + pages +
- * navigation together) stays intact (sequencing is owned by the writer, not the
- * caller). Writes go through Node `fs`; `normalizePath` is used for the
- * vault-relative project path.
+ * the full set — snapshots, standalone pages (FR-12), the resolved navigation
+ * tree (FR-13), AND the SEO site sidecar (FR-14, FR-23) — is staged in a sibling
+ * temp dir, fsynced, then swapped into place in ONE atomic rename. A commit that
+ * fails partway never leaves a half-written `data/` — the previous directory
+ * (snapshots + pages + navigation + site together) stays intact (sequencing is
+ * owned by the writer, not the caller). Writes go through Node `fs`;
+ * `normalizePath` is used for the vault-relative project path.
  */
 export class FsSnapshotWriter implements SnapshotWriterPort {
 	private readonly dataDir: string;
@@ -104,6 +126,7 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		snapshots: ViewSnapshot[],
 		pages: PageNode[] = [],
 		navigation: NavigationTree = emptyNavigationTree(),
+		siteUrl?: string,
 	): Promise<void> {
 		// Ensure the project dir exists so the sibling temp dir can be created.
 		await mkdir(path.dirname(this.dataDir), { recursive: true });
@@ -112,7 +135,7 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		//    the final swap can be an atomic rename, not a cross-device copy).
 		const stagingDir = await mkdtemp(this.tmpPrefix);
 		try {
-			await this.stage(stagingDir, snapshots, pages, navigation);
+			await this.stage(stagingDir, snapshots, pages, navigation, siteUrl);
 		} catch (error) {
 			// Staging failed: discard the partial temp dir and leave the existing
 			// data dir untouched. Nothing was swapped, so it stays intact (or
@@ -136,6 +159,7 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		snapshots: ViewSnapshot[],
 		pages: PageNode[],
 		navigation: NavigationTree,
+		siteUrl?: string,
 	): Promise<void> {
 		const snapshotsDir = path.join(stagingDir, SNAPSHOTS_DIRNAME);
 		await mkdir(snapshotsDir, { recursive: true });
@@ -192,6 +216,24 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 		await writeFileSynced(
 			path.join(stagingDir, NAVIGATION_FILENAME),
 			`${JSON.stringify(navigationManifest, null, '\t')}\n`,
+		);
+
+		// SEO site sidecar (FR-14, FR-23): the settings site URL, committed in the
+		// SAME staged dir so the atomic swap brings it over with the rest.
+		// `astro.config.mjs` reads this synchronously at config load to set Astro's
+		// `site` (enabling @astrojs/sitemap + canonical/OG). Always written; a
+		// trimmed-empty/absent URL is omitted so the config leaves `site` unset and
+		// SEO degrades gracefully (warn-don't-fail). Trimmed so blank input is "no
+		// URL", never a malformed `site`.
+		const trimmedSiteUrl = siteUrl?.trim();
+		const siteManifest: SiteManifest = {
+			version: DATA_LAYOUT_VERSION,
+			generatedAt: index.generatedAt,
+			...(trimmedSiteUrl ? { siteUrl: trimmedSiteUrl } : {}),
+		};
+		await writeFileSynced(
+			path.join(stagingDir, SITE_FILENAME),
+			`${JSON.stringify(siteManifest, null, '\t')}\n`,
 		);
 
 		// fsync the directory trees so the rename's effects survive a crash.

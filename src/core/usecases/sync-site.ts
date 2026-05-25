@@ -121,9 +121,23 @@ export class SyncSite {
 		const nav = resolveNavigation(navConfig, bodies.knownRoutes);
 		warnings.push(...nav.warnings);
 
-		// Commit snapshots, pages, AND the navigation tree in one atomic swap
-		// (FR-3, FR-12, FR-13).
-		await this.writer.commit(snapshots, pages, nav.tree);
+		// Site URL / SEO (FR-14, FR-23; D16): pass the settings site URL through so
+		// the template build can set Astro's `site` (enabling @astrojs/sitemap +
+		// canonical/OG). It is optional — absent leaves `site` unset so dev/build
+		// still succeed and SEO degrades gracefully (warn-don't-fail). Surface a
+		// non-fatal warning when it is missing so a build's SEO degradation is
+		// visible without failing the sync.
+		const siteUrl = config.siteUrl?.trim() || undefined;
+		if (!siteUrl) {
+			warnings.push(
+				'No site URL set — sitemap.xml and canonical/OpenGraph tags are omitted ' +
+					'(set it in settings before publishing for SEO). Dev/preview is unaffected.',
+			);
+		}
+
+		// Commit snapshots, pages, the navigation tree, AND the SEO site sidecar in
+		// one atomic swap (FR-3, FR-12, FR-13, FR-14, FR-23).
+		await this.writer.commit(snapshots, pages, nav.tree, siteUrl);
 
 		return { written: snapshots.length, pages: pages.length, warnings };
 	}

@@ -94,18 +94,21 @@ export interface PageLoaderPort {
 /** Persists snapshots into the Astro project's data directory. */
 export interface SnapshotWriterPort {
 	/**
-	 * Atomically replace all persisted snapshots, standalone pages, **and** the
-	 * resolved navigation tree with exactly these sets, in a single atomic swap
-	 * (FR-3, FR-12, FR-13). `pages` and `navigation` default to empty so
-	 * callers/tests that only commit collection snapshots are unaffected; when
-	 * present, the page set + navigation are committed in the SAME swap as the
-	 * snapshots, so a failed commit leaves the prior data dir (snapshots + pages +
-	 * navigation) intact.
+	 * Atomically replace all persisted snapshots, standalone pages, the resolved
+	 * navigation tree, **and** the SEO site sidecar with exactly these in a single
+	 * atomic swap (FR-3, FR-12, FR-13, FR-14, FR-23). `pages`, `navigation`, and
+	 * `siteUrl` default to empty/absent so callers/tests that only commit
+	 * collection snapshots are unaffected; when present, all sets are committed in
+	 * the SAME swap as the snapshots, so a failed commit leaves the prior data dir
+	 * (snapshots + pages + navigation + site) intact. `siteUrl` is the optional
+	 * Astro `site` URL the template build reads to emit `sitemap.xml` +
+	 * canonical/OpenGraph; absent leaves it unset (dev/build still succeed).
 	 */
 	commit(
 		snapshots: ViewSnapshot[],
 		pages?: PageNode[],
 		navigation?: NavigationTree,
+		siteUrl?: string,
 	): Promise<void>;
 }
 
