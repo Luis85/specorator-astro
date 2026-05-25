@@ -21,11 +21,12 @@ import type { Loader, LoaderContext } from 'astro/loaders';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { indexSchema, snapshotSchema } from './schema';
+import { indexSchema, pageNodeSchema, pagesManifestSchema, snapshotSchema } from './schema';
 
 /** Project-relative data dir (POSIX), resolved against `config.root`. */
 const DATA_DIR = 'data';
 const INDEX_FILE = 'index.json';
+const PAGES_FILE = 'pages.json';
 
 export interface SnapshotLoaderOptions {
 	/** Data dir relative to the Astro project root. Defaults to `data`. */
@@ -107,6 +108,72 @@ export function snapshotLoader(options: SnapshotLoaderOptions = {}): Loader {
 		// The collection's own schema (in content.config.ts) validates entries via
 		// `parseData`; expose it here too so loader-level typing stays accurate.
 		schema: snapshotSchema,
+	};
+}
+
+/**
+ * The Content Layer loader that feeds the `pages` collection — the standalone
+ * pages the plugin commits to `<dir>/pages.json` (FR-12; DESIGN §5.7). Each
+ * page's authoritative `route` is its store id (the home page's is `/`), so
+ * `[...slug].astro` maps one static page per route directly. A missing
+ * `pages.json` (a pre-C13 data dir / nothing synced) is not fatal — the
+ * collection is simply empty and the bundled placeholder index stays.
+ */
+export function pagesLoader(options: SnapshotLoaderOptions = {}): Loader {
+	const dir = options.dir ?? DATA_DIR;
+
+	return {
+		name: 'specorator-pages-loader',
+		async load(context: LoaderContext): Promise<void> {
+			const { store, logger, config, parseData, watcher } = context;
+
+			const dataDirUrl = new URL(`${dir}/`, config.root);
+			const dataDirPath = fileURLToPath(dataDirUrl);
+			const pagesPath = path.join(dataDirPath, PAGES_FILE);
+
+			const loadAll = async (): Promise<void> => {
+				store.clear();
+
+				const raw = await readFile(pagesPath, 'utf8').catch((error: unknown) => {
+					if (isNotFound(error)) {
+						logger.info(`No pages manifest at ${pagesPath} yet — no standalone pages.`);
+						return null;
+					}
+					throw error;
+				});
+				if (raw === null) return;
+
+				const manifest = pagesManifestSchema.parse(JSON.parse(raw));
+				logger.info(
+					`Loading ${String(manifest.pages.length)} standalone page(s) from ${dir}/.`,
+				);
+
+				for (const page of manifest.pages) {
+					// The store id is the page route so pages map 1:1 to routes
+					// (`/` for the home page).
+					const data = await parseData({ id: page.route, data: page });
+					store.set({ id: page.route, data });
+				}
+			};
+
+			await loadAll();
+
+			// Dev-only reload when the writer rewrites the data dir (FR-7); the swap
+			// is atomic, so any change under it means re-read the full set.
+			watcher?.on('change', (changedPath: string) => {
+				if (isUnderDir(changedPath, dataDirPath)) {
+					logger.info('Pages data changed — reloading collection.');
+					void loadAll();
+				}
+			});
+			watcher?.on('add', (changedPath: string) => {
+				if (isUnderDir(changedPath, dataDirPath)) {
+					logger.info('Pages data added — reloading collection.');
+					void loadAll();
+				}
+			});
+		},
+		schema: pageNodeSchema,
 	};
 }
 

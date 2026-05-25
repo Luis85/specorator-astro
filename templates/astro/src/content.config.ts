@@ -1,20 +1,29 @@
 /*
  * specorator-template-version: 1
  *
- * Content collections config (Astro 6). Registers the `snapshots` collection
- * fed by the custom Content Layer loader (`content/loader.ts`), which reads the
- * committed snapshot set from `<project>/data/` (outside `src/`) and validates
- * each file against `snapshotSchema` (docs/DESIGN.md §5.5). The collection's
- * entry id is each snapshot's authoritative listing `route`; `[...slug].astro`
- * derives one static page per entry from it.
+ * Content collections config (Astro 6). Registers two collections fed by the
+ * custom Content Layer loaders (`content/loader.ts`), which read the committed
+ * data set from `<project>/data/` (outside `src/`):
+ *
+ * - `snapshots` — one per published `(base, view)`, validated against
+ *   `snapshotSchema` (docs/DESIGN.md §5.5). The entry id is the listing `route`.
+ * - `pages` — standalone pages (FR-12), validated against `pageNodeSchema`. The
+ *   entry id is the page `route` (the home page's is `/`).
+ *
+ * `[...slug].astro` derives one static page per entry across both collections.
  */
 import { defineCollection } from 'astro:content';
-import { snapshotLoader } from './content/loader';
-import { snapshotSchema } from './content/schema';
+import { pagesLoader, snapshotLoader } from './content/loader';
+import { pageNodeSchema, snapshotSchema } from './content/schema';
 
 const snapshots = defineCollection({
 	loader: snapshotLoader(),
 	schema: snapshotSchema,
 });
 
-export const collections = { snapshots };
+const pages = defineCollection({
+	loader: pagesLoader(),
+	schema: pageNodeSchema,
+});
+
+export const collections = { snapshots, pages };

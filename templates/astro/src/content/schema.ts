@@ -109,6 +109,32 @@ export const snapshotSchema = z.object({
 });
 export type ViewSnapshot = z.infer<typeof snapshotSchema>;
 
+/**
+ * A standalone website page derived from a designated vault note (FR-12; DESIGN
+ * §5.7, §6). One PageNode per page; the `isHome` page renders at `/`. The `body`
+ * is markdown with `[[wikilinks]]` already resolved to routes by the plugin
+ * before write (absent → a title-only page). Keep in lockstep with
+ * `PageNode` in `src/core/domain/types.ts` (do NOT import it — standalone build).
+ */
+export const pageNodeSchema = z.object({
+	path: z.string(),
+	route: z.string(),
+	title: z.string(),
+	isHome: z.boolean(),
+	frontmatter: z.record(z.string(), cellValueSchema),
+	/** The page body (markdown, frontmatter stripped). Absent → an empty page. */
+	body: entryBodySchema.optional(),
+});
+export type PageNode = z.infer<typeof pageNodeSchema>;
+
+/** Shape of `data/pages.json`, the standalone-pages manifest (FR-12). */
+export const pagesManifestSchema = z.object({
+	version: z.number(),
+	generatedAt: z.string(),
+	pages: z.array(pageNodeSchema),
+});
+export type PagesManifest = z.infer<typeof pagesManifestSchema>;
+
 /** One entry of the data-dir manifest (`data/index.json`). */
 export const indexEntrySchema = z.object({
 	baseId: z.string(),

@@ -20,6 +20,7 @@ import Table from './theme/views/Table.astro';
 import Cards from './theme/views/Cards.astro';
 import List from './theme/views/List.astro';
 import Detail from './theme/views/Detail.astro';
+import Page from './theme/views/Page.astro';
 import BaseLayout from './theme/layouts/BaseLayout.astro';
 
 type AstroComponent = (props: Record<string, unknown>) => unknown;
@@ -34,6 +35,8 @@ const views: Record<string, AstroComponent> = {
 	list: List as unknown as AstroComponent,
 	// Per-entry detail page (FR-21); `[...slug].astro` selects it for detail routes.
 	detail: Detail as unknown as AstroComponent,
+	// Standalone page (FR-12); `[...slug].astro` selects it for page routes (incl. `/`).
+	page: Page as unknown as AstroComponent,
 	placeholder: Placeholder as unknown as AstroComponent,
 };
 

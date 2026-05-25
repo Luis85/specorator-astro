@@ -1,0 +1,63 @@
+---
+/*
+ * specorator-template-version: 1
+ *
+ * Template-owned standalone-page view (FR-12, FR-15; DESIGN §5.7, §6). Renders
+ * one designated vault note as a website page: its title and the note body at
+ * core fidelity (markdown + callouts; `[[wikilinks]]`/`![[embeds]]` already
+ * resolved to routes/asset URLs by the plugin before write). A page with no body
+ * renders a title-only page (no crash). Block refs, transclusions, and Dataview
+ * are out of scope and degrade gracefully (D8) — the body renderer passes them
+ * through. Replaced on plugin upgrade — shadow with src/user/views.
+ */
+import type { PageNode } from '../../content/schema';
+import { renderMarkdown } from '../markdown';
+
+interface Props {
+	page: PageNode;
+}
+
+const { page } = Astro.props;
+const bodyHtml = page.body !== undefined ? renderMarkdown(page.body.content) : '';
+---
+
+<article class="sp-page" data-page={page.path} data-home={page.isHome ? 'true' : 'false'}>
+	<header class="sp-page-header">
+		<h1 class="sp-page-title">{page.title}</h1>
+	</header>
+
+	{bodyHtml !== '' && <div class="sp-page-body" set:html={bodyHtml} />}
+</article>
+
+<style>
+	.sp-page {
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-space);
+	}
+	.sp-page-header {
+		padding-bottom: var(--sp-space-sm);
+		border-bottom: 1px solid var(--sp-color-border);
+	}
+	.sp-page-title {
+		margin: 0;
+		color: var(--sp-color-fg);
+	}
+	.sp-page-body {
+		color: var(--sp-color-fg);
+		line-height: var(--sp-line-height);
+	}
+	.sp-page-body :global(.sp-callout) {
+		border: 1px solid var(--sp-color-border);
+		border-left: 4px solid var(--sp-color-accent);
+		border-radius: var(--sp-radius);
+		padding: var(--sp-space-xs) var(--sp-space-sm);
+		margin: var(--sp-space) 0;
+		background: var(--sp-color-accent-soft);
+	}
+	.sp-page-body :global(.sp-callout-title) {
+		font-weight: 700;
+		margin: 0 0 var(--sp-space-2xs);
+		color: var(--sp-color-accent);
+	}
+</style>
