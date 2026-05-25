@@ -1,0 +1,39 @@
+---
+/*
+ * Fixture-only user-owned view that SHADOWS the theme `placeholder` view of the
+ * same name, proving the registry precedence (FR-11b/j): a `src/user/views/*`
+ * component wins over the bundled `src/theme/views/*` default. The verify:template
+ * gate routes the `/showcase` snapshot to `component: "placeholder"` and asserts
+ * this sentinel renders instead of the theme placeholder's copy.
+ *
+ * It accepts BOTH calling conventions so it can shadow the theme placeholder
+ * without breaking the `/fixture` route (which calls it with a `heading` prop):
+ * a `snapshot` (the listing dispatch) renders the sentinel + entry links; a bare
+ * `heading` (the fixture page) renders that heading.
+ */
+import type { EntrySnapshot, EntryGroup, ViewSnapshot } from '../../content/schema';
+
+interface Props {
+	snapshot?: ViewSnapshot;
+	heading?: string;
+}
+
+const { snapshot, heading } = Astro.props;
+const entries: EntrySnapshot[] = snapshot
+	? snapshot.groups.flatMap((group: EntryGroup) => group.entries)
+	: [];
+---
+
+<section class="sp-user-shadow" data-view="user-placeholder">
+	<p data-shadow-marker="user-wins">Rendered by the user-owned placeholder override.</p>
+	{heading && <h1>{heading}</h1>}
+	<ul>
+		{
+			entries.map((entry) => (
+				<li>
+					<a href={entry.route}>{entry.basename}</a>
+				</li>
+			))
+		}
+	</ul>
+</section>

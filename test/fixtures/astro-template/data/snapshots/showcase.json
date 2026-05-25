@@ -1,0 +1,25 @@
+{
+	"baseId": "showcase",
+	"route": "/showcase",
+	"source": { "kind": "file", "path": "Showcase/showcase.base" },
+	"view": {
+		"type": "list",
+		"name": "Showcase",
+		"order": ["file.name"]
+	},
+	"render": { "component": "placeholder", "layout": "BaseLayout" },
+	"groups": [
+		{
+			"key": null,
+			"entries": [
+				{
+					"path": "Showcase/Alpha.md",
+					"basename": "Alpha",
+					"route": "/showcase/alpha",
+					"values": { "file.name": "Alpha" }
+				}
+			]
+		}
+	],
+	"generatedAt": "2026-05-24T00:00:00.000Z"
+}

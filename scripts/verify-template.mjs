@@ -217,6 +217,33 @@ async function assertDetailRoutes(dist) {
 	console.log('[verify:template] OK — per-entry detail pages built; body/callout/link rendered.');
 }
 
+/**
+ * Verify the C11 registry precedence (docs/DESIGN.md §5.6; FR-11b/j): a
+ * `src/user/views/*` component shadows the bundled `src/theme/views/*` default
+ * of the same name. The fixture overlays a user-owned `placeholder.astro` (a
+ * sentinel marker) and routes the `/showcase` snapshot to
+ * `render.component: "placeholder"`; this asserts the built page rendered the
+ * USER override, not the theme placeholder's copy — proving the registry barrel
+ * picked the higher-precedence tier via `import.meta.glob`.
+ */
+async function assertRegistryPrecedence(dist) {
+	const file = path.join(dist, 'showcase', 'index.html');
+	if (!(await exists(file))) {
+		throw new Error(`Registry precedence route /showcase missing (FR-11b): ${file}`);
+	}
+	const html = await readFile(file, 'utf8');
+	// The user override rendered (its sentinel marker), proving user > theme.
+	assertIncludes(html, 'data-shadow-marker="user-wins"', '/showcase user override rendered');
+	assertIncludes(html, 'data-view="user-placeholder"', '/showcase user override view');
+	// The theme placeholder's copy must NOT appear — the theme default was shadowed.
+	if (html.includes('No collections synced yet')) {
+		throw new Error('/showcase: theme placeholder rendered — user override did not shadow it.');
+	}
+	console.log(
+		'[verify:template] OK — user component shadows the same-named theme default (FR-11b/j).',
+	);
+}
+
 /** Read every bundled stylesheet under dist/_astro and concatenate in name order. */
 async function readBundledCss(dist) {
 	const astroDir = path.join(dist, '_astro');
@@ -344,6 +371,11 @@ async function main() {
 		// by the fixture with a sentinel token override) wins over the template's
 		// default tokens in the built CSS, with no component edits (D9; FR-11a/NFR-7).
 		await assertThemeOverrideCascade(dist);
+
+		// C11: assert the registry precedence — a user-owned src/user/views component
+		// shadows the same-named theme default via the glob-based registry barrel
+		// (FR-11b/j), proven by the /showcase route rendering the user override.
+		await assertRegistryPrecedence(dist);
 
 		console.log('[verify:template] OK — astro check + build succeeded; static routes emitted.');
 	} finally {

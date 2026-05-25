@@ -19,6 +19,12 @@
 			"view": "Backlog",
 			"route": "/tasks",
 			"file": "snapshots/tasks.json"
+		},
+		{
+			"baseId": "showcase",
+			"view": "Showcase",
+			"route": "/showcase",
+			"file": "snapshots/showcase.json"
 		}
 	]
 }
