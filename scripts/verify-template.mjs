@@ -445,6 +445,85 @@ async function assertThemeOverrideCascade(dist) {
 	);
 }
 
+/**
+ * Verify the C15 SEO + sitemap (docs/DESIGN.md §5.7; FR-14, FR-23): with a site
+ * URL configured in the staged fixture's data/site.json, astro.config.mjs reads it
+ * at build time, sets Astro's `site`, and registers `@astrojs/sitemap`. This asserts
+ * the build (still `output: 'static'`) emitted a sitemap covering BOTH a static
+ * listing route (/books) and a `[...slug]` detail route (/books/dune), and that
+ * BaseLayout emitted the canonical/OpenGraph tags off the site URL + page path.
+ */
+async function assertSeoAndSitemap(dist) {
+	// 1) The sitemap files were emitted by the integration (sitemap index + the
+	//    enumerated url set). @astrojs/sitemap writes sitemap-index.xml plus one or
+	//    more sitemap-N.xml; the index references the url-set file.
+	const indexFile = path.join(dist, 'sitemap-index.xml');
+	if (!(await exists(indexFile))) {
+		throw new Error(
+			`Sitemap missing: expected ${indexFile} (FR-14). The sitemap integration did not run — is data/site.json's siteUrl set?`,
+		);
+	}
+	const sitemapIndex = await readFile(indexFile, 'utf8');
+	assertIncludes(sitemapIndex, '<sitemapindex', 'sitemap index root element');
+	// Resolve the referenced url-set file (sitemap-0.xml by default) and read it.
+	const urlSetMatch = sitemapIndex.match(/sitemap-\d+\.xml/);
+	if (!urlSetMatch) {
+		throw new Error('sitemap-index.xml did not reference a sitemap-N.xml url set.');
+	}
+	const urlSetFile = path.join(dist, urlSetMatch[0]);
+	if (!(await exists(urlSetFile))) {
+		throw new Error(`Sitemap url set missing: expected ${urlSetFile} (FR-14).`);
+	}
+	const urlSet = await readFile(urlSetFile, 'utf8');
+	assertIncludes(urlSet, '<urlset', 'sitemap url-set root element');
+	// The configured site URL is the origin of every <loc> (proves Astro.site wired
+	// the canonical origin from data/site.json into the sitemap, not a placeholder).
+	assertIncludes(urlSet, 'https://example.com/', 'sitemap uses configured site origin');
+	// Coverage: a static listing route AND a `[...slug]` detail route both appear,
+	// so the sitemap crawls the full statically-generated route table (FR-14). Astro
+	// emits canonical <loc>s with its default trailing slash, so match that form.
+	assertIncludes(urlSet, '<loc>https://example.com/books/</loc>', 'sitemap static route /books');
+	assertIncludes(
+		urlSet,
+		'<loc>https://example.com/books/dune/</loc>',
+		'sitemap [...slug] route /books/dune',
+	);
+
+	// 2) `output: 'static'` is preserved — proven structurally by dist/ being a
+	//    pre-rendered static bundle (no SSR server entry). A static build emits
+	//    index.html files (asserted throughout) and never a _worker.js/entry.mjs
+	//    server adapter artifact at the dist root.
+	for (const ssrArtifact of ['_worker.js', 'entry.mjs', 'server']) {
+		if (await exists(path.join(dist, ssrArtifact))) {
+			throw new Error(
+				`output must stay 'static': found SSR artifact dist/${ssrArtifact} — config switched to SSR.`,
+			);
+		}
+	}
+
+	// 3) Canonical + OpenGraph tags (FR-23): BaseLayout emits them off Astro.site +
+	//    the page path ONLY when a site URL is configured. Assert on two route types.
+	const seoPages = {
+		listing: [path.join(dist, 'books', 'index.html'), 'https://example.com/books/'],
+		detail: [path.join(dist, 'books', 'dune', 'index.html'), 'https://example.com/books/dune/'],
+	};
+	for (const [label, [file, canonical]] of Object.entries(seoPages)) {
+		const html = await readFile(file, 'utf8');
+		assertIncludes(
+			html,
+			`<link rel="canonical" href="${canonical}"`,
+			`${label} canonical link`,
+		);
+		assertIncludes(html, `property="og:url" content="${canonical}"`, `${label} og:url`);
+		assertIncludes(html, 'property="og:title"', `${label} og:title`);
+		assertIncludes(html, 'property="og:type" content="website"', `${label} og:type`);
+	}
+
+	console.log(
+		'[verify:template] OK — sitemap.xml covers static + [...slug] routes; canonical/OG from site URL; output stayed static (FR-14/FR-23).',
+	);
+}
+
 async function main() {
 	const work = await mkdtemp(path.join(tmpdir(), 'specorator-template-'));
 	console.log(`[verify:template] Staging template in ${work}`);
@@ -529,6 +608,12 @@ async function main() {
 		// menu on every page type with correct order/nesting, and breadcrumbs render
 		// the ancestor trail on a nested route (FR-13; DESIGN §5.7).
 		await assertNavigation(dist);
+
+		// C15: assert the SEO + sitemap. With a site URL in data/site.json,
+		// astro.config.mjs sets Astro's site and registers @astrojs/sitemap, so the
+		// static build emits sitemap.xml covering static + [...slug] routes and
+		// BaseLayout emits canonical/OG tags; output stays static (FR-14/FR-23).
+		await assertSeoAndSitemap(dist);
 
 		console.log('[verify:template] OK — astro check + build succeeded; static routes emitted.');
 	} finally {

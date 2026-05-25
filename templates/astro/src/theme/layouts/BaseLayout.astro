@@ -34,6 +34,16 @@ const navEntries = await getCollection('navigation');
 const navigation: NavigationTree = navEntries.find((e) => e.id === 'site')?.data ?? { items: [] };
 const currentRoute = Astro.url.pathname;
 const hasNav = navigation.items.length > 0;
+
+// Canonical / OpenGraph from the configured site URL (C15 — FR-14, FR-23;
+// docs/DESIGN.md §5.7). `Astro.site` is set in astro.config.mjs ONLY when the
+// plugin committed a non-empty siteUrl sidecar. When it is unset, SEO degrades
+// gracefully: no canonical, no og:url — exactly as when no site URL is known.
+// `new URL(Astro.url.pathname, Astro.site)` yields the absolute canonical URL for
+// the current page (so e.g. /books/dune → https://example.com/books/dune).
+const canonicalUrl = Astro.site
+	? new URL(Astro.url.pathname, Astro.site).href
+	: undefined;
 ---
 
 <!doctype html>
@@ -44,7 +54,20 @@ const hasNav = navigation.items.length > 0;
 		<meta name="generator" content="Specorator (Astro)" />
 		<title>{fullTitle}</title>
 		{description && <meta name="description" content={description} />}
-		{/* Canonical / OpenGraph from a configured site URL is a C15 seam — not built here. */}
+		{
+			/* Canonical / OpenGraph (C15, FR-14/FR-23): emitted ONLY when a site URL
+			 * is configured (Astro.site set in astro.config.mjs from data/site.json).
+			 * No site URL means no tags, the SEO-degrades-gracefully contract. */
+			canonicalUrl && (
+				<>
+					<link rel="canonical" href={canonicalUrl} />
+					<meta property="og:type" content="website" />
+					<meta property="og:url" content={canonicalUrl} />
+					<meta property="og:title" content={fullTitle} />
+					{description && <meta property="og:description" content={description} />}
+				</>
+			)
+		}
 	</head>
 	<body>
 		<a class="sp-skip-link" href="#sp-main">Skip to content</a>
