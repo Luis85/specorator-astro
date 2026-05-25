@@ -223,6 +223,27 @@ describe('component-transpile: metadata parsing details', () => {
 	it('returns null for frontmatter with an inline component value (unsupported shape)', () => {
 		expect(parseComponentMeta('component: BookCard')).toBeNull();
 	});
+
+	it('tolerates a blank line inside the component block', () => {
+		const fm = ['component:', '    name: Spacey', '', '    kind: layout'].join('\n');
+		expect(parseComponentMeta(fm)).toEqual({
+			name: 'Spacey',
+			kind: 'layout',
+			appliesTo: [],
+			props: [],
+		});
+	});
+
+	it('stops the component block at a sibling top-level key', () => {
+		// `title:` is a non-indented sibling; `kind` after it is NOT part of component.
+		const fm = ['component:', '    name: Edge', 'title: Other', 'kind: layout'].join('\n');
+		expect(parseComponentMeta(fm)).toEqual({
+			name: 'Edge',
+			kind: 'view',
+			appliesTo: [],
+			props: [],
+		});
+	});
 });
 
 describe('extractAstroFence', () => {
