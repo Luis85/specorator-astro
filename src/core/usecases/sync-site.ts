@@ -2,6 +2,7 @@ import { checkCorePlugins } from '../domain/core-plugins';
 import { UserFacingError } from '../domain/errors';
 import { planSync } from '../domain/routing';
 import { resolveSnapshotAssets } from './resolve-assets';
+import { resolveSnapshotBodies } from './resolve-bodies';
 import type {
 	AssetSourcePort,
 	BasesPort,
@@ -74,6 +75,14 @@ export class SyncSite {
 			const copy = await this.assets.copyAll(resolved.copyPlan);
 			warnings.push(...copy.warnings);
 		}
+
+		// Body link resolution (FR-15, FR-21, D8): build the global route table
+		// from every snapshot and rewrite each entry body's `[[wikilinks]]` to
+		// routes before write (DESIGN §5.7). Cross-base links resolve here, and
+		// route collisions surface as warnings — both pure (`resolveSnapshotBodies`).
+		const bodies = resolveSnapshotBodies(snapshots);
+		snapshots = bodies.snapshots;
+		warnings.push(...bodies.warnings);
 
 		await this.writer.commit(snapshots);
 

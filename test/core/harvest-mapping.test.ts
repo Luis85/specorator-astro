@@ -7,6 +7,7 @@ import {
 	mapViewProperties,
 	normalizeGroupKey,
 	selectViewConfig,
+	toBody,
 	type HarvestedConfig,
 	type HarvestedEntry,
 	type HarvestedGroup,
@@ -189,6 +190,56 @@ describe('mapEntry', () => {
 	it('uses the resolved route from the resolver', () => {
 		const e = entry('Notes/A.md', 'A', {});
 		expect(mapEntry(e, [], (x) => `/x/${x.file.basename.toLowerCase()}`).route).toBe('/x/a');
+	});
+
+	it('attaches a body from the body reader when one is provided', () => {
+		const e = entry('Books/Dune.md', 'Dune', {});
+		const out = mapEntry(e, [], resolveRoute, () => ({
+			format: 'markdown' as const,
+			content: 'Set on Arrakis.',
+		}));
+		expect(out.body).toEqual({ format: 'markdown', content: 'Set on Arrakis.' });
+	});
+
+	it('omits body when the reader returns undefined (no body)', () => {
+		const e = entry('Books/Dune.md', 'Dune', {});
+		expect(mapEntry(e, [], resolveRoute, () => undefined)).not.toHaveProperty('body');
+	});
+
+	it('omits body when no reader is provided', () => {
+		const e = entry('Books/Dune.md', 'Dune', {});
+		expect(mapEntry(e, [], resolveRoute)).not.toHaveProperty('body');
+	});
+});
+
+describe('toBody', () => {
+	it('returns the markdown body with a leading frontmatter block stripped', () => {
+		const raw = '---\ntitle: Dune\nauthor: Frank Herbert\n---\n\nSet on Arrakis.\n';
+		expect(toBody(raw)).toEqual({ format: 'markdown', content: 'Set on Arrakis.' });
+	});
+
+	it('keeps the whole body when there is no frontmatter', () => {
+		expect(toBody('Just a body.\n')).toEqual({ format: 'markdown', content: 'Just a body.' });
+	});
+
+	it('handles CRLF frontmatter delimiters', () => {
+		expect(toBody('---\r\nx: 1\r\n---\r\nBody.')).toEqual({
+			format: 'markdown',
+			content: 'Body.',
+		});
+	});
+
+	it('returns undefined for an empty body (frontmatter only or blank)', () => {
+		expect(toBody('---\ntitle: x\n---\n')).toBeUndefined();
+		expect(toBody('   \n\n')).toBeUndefined();
+		expect(toBody('')).toBeUndefined();
+	});
+
+	it('does not strip a horizontal rule that is not leading frontmatter', () => {
+		expect(toBody('Intro\n\n---\n\nMore')).toEqual({
+			format: 'markdown',
+			content: 'Intro\n\n---\n\nMore',
+		});
 	});
 });
 

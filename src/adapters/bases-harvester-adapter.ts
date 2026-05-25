@@ -10,10 +10,13 @@ import type { ResolvedTarget, ViewSnapshot } from '../core/domain/types';
 import {
 	buildViewSnapshot,
 	selectViewConfig,
+	toBody,
 	type HarvestedConfig,
+	type HarvestedEntry,
 	type HarvestedGroup,
 	type ParsedBaseFile,
 } from '../core/domain/harvest-mapping';
+import type { EntryBody } from '../core/domain/types';
 import type { BasesPort } from '../core/ports';
 
 /**
@@ -84,17 +87,61 @@ export class BasesHarvesterAdapter implements BasesPort {
 			});
 			const { config, groupedData } = await ready;
 
+			// Read each entry's detail-page body (FR-21, D8): `cachedRead` the note
+			// and strip frontmatter (the property source, already in `values`). Done
+			// async up-front into a path→body map so the pure mapper's `readBody`
+			// stays synchronous. Wikilinks are resolved later, globally, against the
+			// route table (`resolveSnapshotBodies`), so this only ships raw markdown.
+			const bodies = await this.readBodies(groupedData);
+
 			return buildViewSnapshot({
 				target,
 				config,
 				groupedData,
 				viewType: selected.type,
 				...(selected.groupBy ? { groupBy: selected.groupBy } : {}),
+				readBody: (entry) => bodies.get(entry.file.path),
 				generatedAt: new Date().toISOString(),
 			});
 		} finally {
 			leaf.detach();
 		}
+	}
+
+	/**
+	 * Read the markdown body of every harvested entry into a `path → body` map.
+	 * Each body is the note's markdown with frontmatter stripped (`toBody`); a
+	 * note that cannot be read (vanished/binary) is simply omitted — a missing
+	 * body degrades to "no body section" on the detail page, never fatal (D8).
+	 */
+	private async readBodies(
+		groupedData: readonly HarvestedGroup[],
+	): Promise<Map<string, EntryBody>> {
+		const bodies = new Map<string, EntryBody>();
+		const seen = new Set<string>();
+		const entries: HarvestedEntry[] = groupedData.flatMap((group) => group.entries);
+		await Promise.all(
+			entries.map(async (entry) => {
+				const path = entry.file.path;
+				if (seen.has(path)) {
+					return;
+				}
+				seen.add(path);
+				const file = this.app.vault.getFileByPath(path);
+				if (file === null) {
+					return;
+				}
+				try {
+					const body = toBody(await this.app.vault.cachedRead(file));
+					if (body !== undefined) {
+						bodies.set(path, body);
+					}
+				} catch {
+					// Unreadable note → no body (graceful degradation, D8).
+				}
+			}),
+		);
+		return bodies;
 	}
 
 	/**

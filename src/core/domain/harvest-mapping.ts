@@ -19,6 +19,7 @@ import { joinRoute, slugifySegment } from './routing';
 import type {
 	BasesPropertyId,
 	CellValue,
+	EntryBody,
 	EntryGroup,
 	EntrySnapshot,
 	ResolvedTarget,
@@ -140,6 +141,37 @@ export interface HarvestedConfig {
 export type EntryRouteResolver = (entry: HarvestedEntry) => string;
 
 /**
+ * Reads the detail-page body for a harvested entry, or `undefined` for none
+ * (FR-21, D8). The adapter implements this by reading the note's markdown via
+ * `cachedRead` and stripping frontmatter ({@link toBody}); kept as an injected
+ * seam so the mapper stays pure (no Vault access). The body's `[[wikilinks]]`
+ * are resolved later, globally, against the route table (`resolveSnapshotBodies`).
+ */
+export type EntryBodyReader = (entry: HarvestedEntry) => EntryBody | undefined;
+
+/**
+ * Strip a leading YAML frontmatter block (`---` … `---`) from a note's raw
+ * markdown, returning the body as an {@link EntryBody}, or `undefined` when the
+ * body is empty. Pure: the adapter reads the file; this decides the body shape.
+ *
+ * Frontmatter is the Bases property source (already mirrored into entry
+ * `values`), so it is dropped from the rendered body to avoid duplication.
+ */
+export function toBody(raw: string): EntryBody | undefined {
+	let content = raw;
+	// A frontmatter block must be at the very start: `---\n … \n---`.
+	const fm = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(content);
+	if (fm !== null) {
+		content = content.slice(fm[0].length);
+	}
+	content = content.replace(/^\s+/, '').replace(/\s+$/, '');
+	if (content === '') {
+		return undefined;
+	}
+	return { format: 'markdown', content };
+}
+
+/**
  * Convert a Bases `Value` into a JSON-serializable {@link CellValue}.
  *
  * Rules (DESIGN §7 value types):
@@ -203,16 +235,19 @@ export function mapEntry(
 	entry: HarvestedEntry,
 	order: readonly BasesPropertyId[],
 	resolveRoute: EntryRouteResolver,
+	readBody?: EntryBodyReader,
 ): EntrySnapshot {
 	const values: Record<BasesPropertyId, CellValue> = {};
 	for (const propertyId of order) {
 		values[propertyId] = mapValue(entry.getValue(propertyId));
 	}
+	const body = readBody?.(entry);
 	return {
 		path: entry.file.path,
 		basename: entry.file.basename,
 		route: resolveRoute(entry),
 		values,
+		...(body !== undefined ? { body } : {}),
 	};
 }
 
@@ -225,10 +260,11 @@ export function mapGroups(
 	groupedData: readonly HarvestedGroup[],
 	order: readonly BasesPropertyId[],
 	resolveRoute: EntryRouteResolver,
+	readBody?: EntryBodyReader,
 ): EntryGroup[] {
 	return groupedData.map((group) => ({
 		key: normalizeGroupKey(group.key),
-		entries: group.entries.map((entry) => mapEntry(entry, order, resolveRoute)),
+		entries: group.entries.map((entry) => mapEntry(entry, order, resolveRoute, readBody)),
 	}));
 }
 
@@ -261,6 +297,13 @@ export interface HarvestInputs {
 	viewType: ViewType;
 	/** Optional `groupBy` config mirrored from the `.base`. */
 	groupBy?: { property: BasesPropertyId; direction: 'ASC' | 'DESC' };
+	/**
+	 * Optional per-entry detail-body reader (FR-21, D8). When provided, each
+	 * entry gets a `body` for its detail page; the adapter wires it to a
+	 * `cachedRead` + {@link toBody}. Wikilinks in the body are resolved later,
+	 * globally, against the route table.
+	 */
+	readBody?: EntryBodyReader;
 	/** ISO timestamp; injected so the function stays pure/deterministic. */
 	generatedAt: string;
 }
@@ -273,7 +316,7 @@ export interface HarvestInputs {
  * timestamp; everything else is derived here.
  */
 export function buildViewSnapshot(inputs: HarvestInputs): ViewSnapshot {
-	const { target, config, groupedData, viewType, groupBy, generatedAt } = inputs;
+	const { target, config, groupedData, viewType, groupBy, readBody, generatedAt } = inputs;
 	const { order } = mapViewProperties(config);
 	const resolveRoute: EntryRouteResolver = (entry) =>
 		joinRoute(target.route, slugifySegment(entry.file.basename));
@@ -289,7 +332,7 @@ export function buildViewSnapshot(inputs: HarvestInputs): ViewSnapshot {
 			...(groupBy ? { groupBy } : {}),
 		},
 		render: { component: target.component, layout: target.layout },
-		groups: mapGroups(groupedData, order, resolveRoute),
+		groups: mapGroups(groupedData, order, resolveRoute, readBody),
 		generatedAt,
 	};
 }
