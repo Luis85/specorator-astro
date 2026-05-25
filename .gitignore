@@ -10,3 +10,4 @@ docs/api/
 Thumbs.db
 .idea/
 .vscode/
+.claude/worktrees/
