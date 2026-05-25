@@ -106,6 +106,32 @@ comments, and discussion.
   entry's id is its authoritative listing `route`. In dev it registers a
   `watcher.on('change'/'add', …)` over the data dir so re-syncing live-reloads
   the preview (FR-7); this reloads **data** only, not `.astro` source.
+- **Standalone page** — a website page backed by an individual designated vault
+  note (FR-12; DESIGN §5.7), distinct from a Bases-driven collection. A note is
+  _designated_ either by living in the configured pages folder (default
+  `Site/pages`) OR by an opt-in frontmatter flag (`site:true`/`type:page`/
+  `page:true`) — and never if it's a component-library note (the _leakage
+  predicate_, FR-11i). Exactly one designated note may be the **home page**
+  (`/`); first-wins on conflicts. The pure decisions (`pages.ts`:
+  `isDesignatedPage`/`derivePageRoute`/`buildPageNodes`) live in core.
+- **PageNode** — the committed shape of one standalone page (`{ path, route,
+title, isHome, frontmatter, body? }`). Its `route` joins the **global** route
+  table alongside listing/detail routes, so page↔page and page↔collision are
+  detected once and page-body `[[wikilinks]]` resolve against the same table
+  (`resolveSiteBodies`). The writer commits the set to `data/pages.json` in the
+  **same atomic swap** as the snapshots (FR-3/FR-12); a body-less page renders
+  title-only.
+- **Page loader** — the thin I/O seam (`PageLoaderPort` / `PageLoaderAdapter`)
+  that scans markdown notes and supplies the raw candidate notes (path +
+  frontmatter + frontmatter-stripped body) the pure `buildPageNodes` decides
+  designation over. It pre-filters to the pages folder + flagged notes for
+  efficiency (a superset is harmless — designation is re-decided in core).
+- **Pages loader** — the template's sibling Content Layer loader (`pagesLoader`
+  in `src/content/loader.ts`) that reads `data/pages.json`, validates each
+  PageNode against the **Zod 4** `pageNodeSchema`, and feeds the `pages`
+  collection (entry id = the page `route`). The home page (`/`) renders via
+  `index.astro`; non-home pages render through `[...slug].astro` and the `page`
+  view — so the static `/` never collides with the dynamic catch-all.
 - **Registry barrel** — the template's `src/registry.ts`, a single stable module
   mapping a component/layout **name** → an imported `.astro` component
   (`resolveView`/`resolveLayout`). The typed `theme/` defaults are the base; it
