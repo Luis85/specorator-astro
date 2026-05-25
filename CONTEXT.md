@@ -81,12 +81,38 @@ comments, and discussion.
   the preview (FR-7); this reloads **data** only, not `.astro` source.
 - **Registry barrel** — the template's `src/registry.ts`, a single stable module
   mapping a component/layout **name** → an imported `.astro` component
-  (`resolveView`/`resolveLayout`). Keeping every view behind one barrel keeps the
-  file set stable so adding a view never trips Astro's new-file HMR gap (D9).
+  (`resolveView`/`resolveLayout`). The typed `theme/` defaults are the base; it
+  then overlays `import.meta.glob`-discovered `user/` then `generated/`
+  components, so a same-named user (or vault) component **shadows** the theme
+  default at render time (FR-11b/j). Keeping every component behind one barrel
+  keeps the file set stable so adding a component never trips Astro's new-file
+  HMR gap (D9).
 - **View dispatch** — the `[...slug].astro` route emits one static listing page
   per snapshot via `getStaticPaths()` and renders it with the registry component
   named by `render.component`, defaulting to the view `type` (`table`/`cards`/
   `list`) when the binding is `'auto'`.
+- **Registry tiers & precedence** — components/layouts are discovered across
+  three tiers — `theme/` (bundled defaults), `user/` (hand-written `.astro`,
+  never overwritten), and `generated/` (transpiled vault notes, the C12 seam).
+  On a name collision the precedence is **`generated` → `user` → `theme`**
+  (FR-11j). The pure `resolveRegistry` (`core/domain/registry.ts`) folds the
+  per-tier names into a deduped, sorted available-name list recording the winning
+  tier per name; the fs scan that produces the per-tier names is the
+  `RegistryPort`/`RegistryAdapter`.
+- **Assignment resolution** — which component/layout renders a `(basePath,
+viewName)` is stored in the plugin settings as the optional
+  `PublishTarget.component`/`layout` (the sidecar, D4 — not the `.base` file).
+  The pure `resolveBinding`/`resolveAssignment` collapse `'auto'`/unset to the
+  view **type** (component) and the default layout `BaseLayout`, keeping any
+  explicit name verbatim; `buildViewSnapshot` applies it so the snapshot's
+  `render` carries concrete names that match the template dispatch.
+- **Registry discovery & scaffold** — `RegistryPort.discover()` scans the
+  project's `theme/`/`user/`/`generated/` view+layout dirs for `.astro` names
+  (raw, pre-precedence) to populate the settings assignment **dropdowns**;
+  `ScaffoldPort.scaffold(kind, name)` writes a **user-owned** stub under
+  `src/user/views|layouts/`, **never overwriting** an existing file (NFR-9). Stub
+  content is the pure `scaffold-stub.ts`; the `Scaffold component/layout` command
+  drives it via the `ScaffoldModal`.
 - **Asset pipeline** — resolving referenced vault attachments (card covers /
   image-typed values, MVP per D7) to stable `public/` URLs and copying them into
   the build (FR-16). Split: the **pure** half (`asset-resolver.ts` +
