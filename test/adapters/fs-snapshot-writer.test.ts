@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -326,5 +326,105 @@ describe('FsSnapshotWriter (temp-dir contract)', () => {
 
 		// The prior navigation.json is untouched — the swap never ran.
 		expect(await readNavigation(dataDir)).toEqual(before);
+	});
+
+	// Crash-debris sweep + mid-swap recovery (FIX 3) and unique backup paths (FIX 4b).
+	describe('crash recovery + debris sweep', () => {
+		it('recovers a mid-swap crash: data/ gone but a single data.bak-* present', async () => {
+			// Simulate a crash BETWEEN swap's two renames: data/ was moved aside to a
+			// backup, but the staging dir never made it into data/. Build a complete
+			// backup by committing then renaming data/ → data.bak-*.
+			const writer = new FsSnapshotWriter(projectDir);
+			await writer.commit([snapshot('survivor')]);
+			const backup = path.join(projectDir, 'data.bak-123-456-1');
+			await rename(dataDir, backup);
+			expect(await exists(dataDir)).toBe(false);
+
+			// The next commit's sweep promotes the lone backup back to data/, then
+			// commits the new set over it (so we still end with the new data).
+			await writer.commit([snapshot('newer')]);
+
+			const index = await readIndex(dataDir);
+			expect(index.snapshots.map((e) => e.baseId)).toEqual(['newer']);
+			// The recovered backup was promoted then superseded — no debris remains.
+			const debris = (await readdir(projectDir)).filter(
+				(n) => n.startsWith('data.bak-') || n.startsWith('.data.tmp-'),
+			);
+			expect(debris).toEqual([]);
+		});
+
+		it('does NOT recover when data/ already exists (ambiguous: leaves data/, sweeps backups)', async () => {
+			const writer = new FsSnapshotWriter(projectDir);
+			await writer.commit([snapshot('live')]);
+			// A leftover backup sits next to a healthy data/ (crash AFTER the swap
+			// completed but BEFORE the backup was rm'd). data/ is authoritative.
+			const stale = path.join(projectDir, 'data.bak-999-1-1');
+			await mkdir(stale, { recursive: true });
+			await writeFile(path.join(stale, 'marker.txt'), 'stale');
+
+			await writer.commit([snapshot('live2')]);
+
+			// data/ holds the freshly committed set; the stale backup was swept.
+			expect((await readIndex(dataDir)).snapshots.map((e) => e.baseId)).toEqual(['live2']);
+			expect(await exists(stale)).toBe(false);
+		});
+
+		it('sweeps stray .data.tmp-* staging dirs from a mid-stage crash', async () => {
+			const writer = new FsSnapshotWriter(projectDir);
+			await writer.commit([snapshot('first')]);
+			// An abandoned staging dir from a commit killed mid-stage.
+			const orphanTmp = path.join(projectDir, '.data.tmp-deadbeef');
+			await mkdir(orphanTmp, { recursive: true });
+			await writeFile(path.join(orphanTmp, 'partial.json'), '{}');
+
+			await writer.commit([snapshot('second')]);
+
+			const stray = (await readdir(projectDir)).filter((n) => n.startsWith('.data.tmp-'));
+			expect(stray).toEqual([]);
+			expect((await readIndex(dataDir)).snapshots.map((e) => e.baseId)).toEqual(['second']);
+		});
+
+		it('does NOT recover when multiple data.bak-* exist (ambiguous): sweeps them', async () => {
+			const writer = new FsSnapshotWriter(projectDir);
+			await writer.commit([snapshot('seed')]);
+			// Two backups + no data/ is ambiguous; recovery would have to guess, so
+			// it sweeps both rather than picking the wrong one.
+			await rename(dataDir, path.join(projectDir, 'data.bak-1-1-1'));
+			await mkdir(path.join(projectDir, 'data.bak-2-2-2'), { recursive: true });
+			expect(await exists(dataDir)).toBe(false);
+
+			await writer.commit([snapshot('fresh')]);
+
+			expect((await readIndex(dataDir)).snapshots.map((e) => e.baseId)).toEqual(['fresh']);
+			const debris = (await readdir(projectDir)).filter((n) => n.startsWith('data.bak-'));
+			expect(debris).toEqual([]);
+		});
+
+		it('uses a unique backup path per commit even under a frozen clock (FIX 4b)', async () => {
+			// The backup name folds in a per-instance monotonic counter on top of
+			// timestamp + pid. Freeze the clock so timestamp + pid would collide
+			// across commits: without the counter, the second swap would rename a new
+			// data/ onto the SAME backup path that still holds the first backup,
+			// clobbering it (or, with a leftover, failing). With the counter each
+			// commit picks a distinct backup, so a sequence of same-clock commits all
+			// succeed and leave no leftover backup behind.
+			const writer = new FsSnapshotWriter(projectDir);
+			const frozen = Date.now();
+			const realNow = Date.now;
+			Date.now = () => frozen;
+			try {
+				await writer.commit([snapshot('one')]);
+				await writer.commit([snapshot('two')]);
+				await writer.commit([snapshot('three')]);
+			} finally {
+				Date.now = realNow;
+			}
+
+			// Each commit landed cleanly (the last wins) — no clobbered/merged state.
+			expect((await readIndex(dataDir)).snapshots.map((e) => e.baseId)).toEqual(['three']);
+			// No leftover backups despite the frozen clock — each used a distinct path.
+			const debris = (await readdir(projectDir)).filter((n) => n.startsWith('data.bak-'));
+			expect(debris).toEqual([]);
+		});
 	});
 });

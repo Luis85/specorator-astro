@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { normalizePath } from 'obsidian';
@@ -11,6 +11,12 @@ const DATA_LAYOUT_VERSION = 1;
 
 /** Subdirectory of the project that holds the committed snapshot set. */
 const DATA_DIRNAME = 'data';
+
+/** Prefix of the sibling staging dir used while a commit is being written. */
+const TMP_BASENAME_PREFIX = '.data.tmp-';
+
+/** Prefix of the sibling backup dir the prior `data/` is moved aside to during a swap. */
+const BACKUP_BASENAME_PREFIX = 'data.bak-';
 
 /** Subdirectory of the data dir that holds one JSON file per snapshot. */
 const SNAPSHOTS_DIRNAME = 'snapshots';
@@ -111,15 +117,24 @@ interface SiteManifest {
  * `normalizePath` is used for the vault-relative project path.
  */
 export class FsSnapshotWriter implements SnapshotWriterPort {
+	private readonly projectDir: string;
 	private readonly dataDir: string;
 	private readonly tmpPrefix: string;
+
+	/**
+	 * Per-instance monotonic counter folded into every backup dir name so two
+	 * commits from the same process in the same millisecond can never pick the
+	 * same `data.bak-*` path and clobber each other's backup (FIX 4b).
+	 */
+	private backupSeq = 0;
 
 	constructor(projectDir: string) {
 		// `projectDir` is vault-relative (derived from `manifest.dir`); normalize
 		// the separators before deriving any child paths (OBS-3).
 		const normalizedProjectDir = normalizePath(projectDir);
+		this.projectDir = normalizedProjectDir;
 		this.dataDir = path.join(normalizedProjectDir, DATA_DIRNAME);
-		this.tmpPrefix = path.join(normalizedProjectDir, '.data.tmp-');
+		this.tmpPrefix = path.join(normalizedProjectDir, TMP_BASENAME_PREFIX);
 	}
 
 	async commit(
@@ -130,6 +145,12 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 	): Promise<void> {
 		// Ensure the project dir exists so the sibling temp dir can be created.
 		await mkdir(path.dirname(this.dataDir), { recursive: true });
+
+		// 0. Sweep crash debris from a prior run before staging: stray `.data.tmp-*`
+		//    (a commit killed mid-stage) and `data.bak-*` (killed mid-swap) dirs are
+		//    never cleaned otherwise, and a crash BETWEEN the two swap renames leaves
+		//    only a backup with no `data/`. Recover that case (FIX 3).
+		await this.sweepDebris();
 
 		// 1. Stage the full set in a sibling temp dir on the same filesystem (so
 		//    the final swap can be an atomic rename, not a cross-device copy).
@@ -146,6 +167,51 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 
 		// 2. Swap the staged dir into place atomically.
 		await this.swap(stagingDir);
+	}
+
+	/**
+	 * Sweep stray sibling dirs left by a crashed prior commit, and recover a
+	 * mid-swap crash (FIX 3). `swap()` renames `data/` → `data.bak-*` then
+	 * `staging` → `data/`; a hard crash BETWEEN the two leaves only the backup and
+	 * no `data/`. So:
+	 *
+	 * - If `data/` is missing but exactly one `data.bak-*` exists, that backup is
+	 *   the last complete set — promote it back to `data/`.
+	 * - Then delete every remaining `.data.tmp-*` (abandoned staging) and
+	 *   `data.bak-*` (already-superseded backup) dir.
+	 *
+	 * Best-effort: a sibling that another concurrent commit is mid-rename on may
+	 * vanish underfoot (ENOENT), which is fine — it is being handled there.
+	 */
+	private async sweepDebris(): Promise<void> {
+		let siblings: string[];
+		try {
+			siblings = await readdir(this.projectDir);
+		} catch (error) {
+			// No project dir yet → nothing to sweep (a first commit will create it).
+			if (isNotFound(error)) return;
+			throw error;
+		}
+
+		const tmpDirs = siblings.filter((name) => name.startsWith(TMP_BASENAME_PREFIX));
+		const backupDirs = siblings.filter((name) => name.startsWith(BACKUP_BASENAME_PREFIX));
+
+		// Recover a mid-swap crash: `data/` gone but exactly one backup present.
+		const dataPresent = siblings.includes(DATA_DIRNAME);
+		if (!dataPresent && backupDirs.length === 1) {
+			const recovered = await renameIfExists(
+				path.join(this.projectDir, backupDirs[0]),
+				this.dataDir,
+			);
+			if (recovered) {
+				backupDirs.length = 0; // promoted, no longer debris to sweep
+			}
+		}
+
+		// Sweep the rest: abandoned staging dirs and any superseded backups.
+		for (const name of [...tmpDirs, ...backupDirs]) {
+			await rm(path.join(this.projectDir, name), { recursive: true, force: true });
+		}
 	}
 
 	/**
@@ -244,8 +310,16 @@ export class FsSnapshotWriter implements SnapshotWriterPort {
 	/** Atomically replace `dataDir` with the staged dir. */
 	private async swap(stagingDir: string): Promise<void> {
 		// Move any prior data dir aside first so the live `data/` is only ever
-		// the complete previous set or the complete new set — never a mix.
-		const backupDir = `${this.dataDir}.bak-${String(Date.now())}-${String(process.pid)}`;
+		// the complete previous set or the complete new set — never a mix. The
+		// backup name folds in a per-instance monotonic counter on top of the
+		// timestamp + pid, so two commits in the same process/millisecond can never
+		// collide on the same backup dir and clobber each other's prior set (FIX 4b).
+		const backupDir = path.join(
+			this.projectDir,
+			`${BACKUP_BASENAME_PREFIX}${String(Date.now())}-${String(process.pid)}-${String(
+				(this.backupSeq += 1),
+			)}`,
+		);
 		const hadPrevious = await renameIfExists(this.dataDir, backupDir);
 
 		try {
