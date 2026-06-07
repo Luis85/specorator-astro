@@ -41,7 +41,7 @@
 		"@commitlint/cli": "^21.0.0",
 		"@commitlint/config-conventional": "^21.0.0",
 		"@types/node": "25.9.1",
-		"@vitest/coverage-v8": "4.1.7",
+		"@vitest/coverage-v8": "4.1.8",
 		"dependency-cruiser": "^17.4.0",
 		"esbuild": "0.28.0",
 		"eslint": "10.4.0",
