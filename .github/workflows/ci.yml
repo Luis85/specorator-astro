@@ -12,7 +12,7 @@ jobs:
     verify:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - uses: actions/setup-node@v6
               with:
                   node-version: '24'
@@ -28,7 +28,7 @@ jobs:
         # Kept separate from `verify` because it installs Astro and runs a build.
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - uses: actions/setup-node@v6
               with:
                   node-version: '24'

@@ -37,7 +37,7 @@ jobs:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             TAG: ${{ needs.release-please.outputs.tag_name }}
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
               with:
                   # Build from the exact tagged tree release-please created.
                   ref: ${{ needs.release-please.outputs.tag_name }}
