@@ -41,7 +41,7 @@ jobs:
               with:
                   # Build from the exact tagged tree release-please created.
                   ref: ${{ needs.release-please.outputs.tag_name }}
-            - uses: actions/setup-node@v6
+            - uses: actions/setup-node@v7
               with:
                   node-version: '24'
                   cache: npm
